@@ -1,0 +1,17 @@
+7c187beb589bc0139f78615a3df02040 *DESCRIPTION
+08917de3b93d56e79fd318024a4cf48e *NAMESPACE
+4a42afe9d88fcb968c7a0ca6fed88159 *R/LKTfunctions.R
+0a50254b3a27c48cb89bd492177eab88 *R/data.R
+be6b32b0bd5c18002c9d0e81c89bb3ac *README.md
+455c7b1fef1d210a0c3bd0e63377d7eb *build/vignette.rds
+1de427ff2e41a382f4f23f10d4c0a9e2 *data/samplelkt.rda
+03c53d923492a67dccf786a4cca916b0 *inst/doc/Basic_Operations.R
+c10d1e7f09d3a75c168dc5ef1de78b0e *inst/doc/Basic_Operations.Rmd
+2b64cbe99602adf30ddb6ca054a21c65 *inst/doc/Basic_Operations.html
+1bc7e743cd3df39027e9e95205404261 *man/LKT.Rd
+eea58cc370c9a63e25ec234c0003f3cc *man/computeSpacingPredictors.Rd
+edfa62604d4985e31dd2b5e89600a9d1 *man/computefeatures.Rd
+b793f9a83cf2c5a9b3158f04ad1aff99 *man/countOutcome.Rd
+e5326604cc53f9b4718f6d9b7b79ec26 *man/samplelkt.Rd
+0ae967ca1e7e8df31c41f20a064ce7dc *man/smallSet.Rd
+c10d1e7f09d3a75c168dc5ef1de78b0e *vignettes/Basic_Operations.Rmd
