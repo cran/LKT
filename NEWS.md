@@ -1,10 +1,14 @@
 # Version 1.0.0
-* Intial Release
+* Initial Release
   
 # Version 1.0.1
-* Bugfix for problem with predictions too close to 1 or 0 causing infinite missfit
+* Bugfix for problem with predictions too close to 1 or 0 causing infinite misfit
 * Corrected the dependencies for the package
 
 # Version 1.1.0
-* "connectors"" parameter added to LKT which allows controlling component interactions
+* "connectors" parameter added to LKT which allows controlling component interactions
   
+# Version 1.2.0
+* Added automatic KC generation using covariance clustering
+* "curvefeats" parameter added to allow other inputs for curvilinear effects
+* Added HDIntervals (coefficient credibility intervals)

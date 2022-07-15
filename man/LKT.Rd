@@ -8,10 +8,10 @@ LKT(
   data,
   components,
   features,
-  connectors = rep("+", length(components)),
   fixedpars = NA,
   seedpars = NA,
   covariates = NA,
+  curvefeats = NA,
   dualfit = FALSE,
   interc = FALSE,
   cv = FALSE,
@@ -19,9 +19,15 @@ LKT(
   verbose = TRUE,
   epsilon = 1e-04,
   cost = 512,
+  lowb = 1e-05,
+  highb = 0.99999,
   type = 0,
   maketimes = FALSE,
-  bias = 0
+  bias = 0,
+  maxitv = 100,
+  autoKC = rep(0, length(components)),
+  autoKCcont = rep("NA", length(components)),
+  connectors = rep("+", length(components) - 1)
 )
 }
 \arguments{
@@ -31,13 +37,13 @@ LKT(
 
 \item{features}{a vector methods to use to compute a feature for the component.}
 
-\item{connectors}{a vector of the characters used for the formula connections, i.e., "+", ":", or "*", with default "+" when not provided}
-
 \item{fixedpars}{a vector of parameters for all features+components.}
 
 \item{seedpars}{a vector of parameters for all features+components to seed non-linear parameter search.}
 
 \item{covariates}{A list of components that interacts with component by feature in the main specification.}
+
+\item{curvefeats}{vector of columns to use with "diff" functions}
 
 \item{dualfit}{TRUE or FALSE, fit a simple latency using logit. Requires Duration..sec. column in data.}
 
@@ -51,16 +57,28 @@ LKT(
 
 \item{epsilon}{passed to LiblineaR}
 
-\item{cost}{passsed to LiblineaR}
+\item{cost}{passed to LiblineaR}
 
-\item{type}{passsed to LiblineaR}
+\item{lowb}{lower bound for non-linear optimizations}
+
+\item{highb}{upper bound for non-linear optimizations}
+
+\item{type}{passed to LiblineaR}
 
 \item{maketimes}{Boolean indicating whether to create time based features (or may be precomputed)}
 
-\item{bias}{passsed to LiblineaR}
+\item{bias}{passed to LiblineaR}
+
+\item{maxitv}{passed to nonlinear optimization a maxit control}
+
+\item{autoKC}{a vector to indicate whether to use autoKC for the component (0) or the k for the numebr of clusters}
+
+\item{autoKCcont}{a vector of text strings set to "rand" for component to make autoKC assignment to cluster is randomized (for comaprison)}
+
+\item{connectors}{a vector if linear equation R operators including +, * and :}
 }
 \value{
-list of values "model", "coefs", "r2", "prediction", "nullmodel", "latencymodel", "optimizedpars","subjectrmse", "newdata", and "loglike"
+list of values "model", "coefs", "r2", "prediction", "nullmodel", "latencymodel", "optimizedpars","subjectrmse", "newdata", and "automat"
 }
 \description{
 Compute a logistic regression model of learning for input data.
