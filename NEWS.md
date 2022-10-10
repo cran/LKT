@@ -12,3 +12,8 @@
 * Added automatic KC generation using covariance clustering
 * "curvefeats" parameter added to allow other inputs for curvilinear effects
 * Added HDIntervals (coefficient credibility intervals)
+
+# Version 1.3.0
+* Updated examples
+* Large test sample added
+* Bugfix for bug in predict function causing random catastrophic failure
