@@ -1,7 +1,8 @@
 #' @importFrom graphics boxplot
 #' @importFrom methods new
-#' @importFrom stats aggregate as.formula ave binomial coef cor glm lm logLik median optim predict qlogis quantile
+#' @importFrom stats aggregate deviance as.formula ave binomial coef cor glm lm logLik median optim predict qlogis quantile
 #' @importFrom utils packageVersion
+#' @importFrom graphics axis legend matplot mtext par
 
 #' @title computeSpacingPredictors
 #' @description Compute repetition spacing time based features from input data CF..Time. and/or CF..reltime.
@@ -47,12 +48,11 @@ computeSpacingPredictors <- function(data, KCs) {
 #' @param connectors a vector of the characters used for the formula connections, i.e., "+", ":", or "*", with default "+" when not provided
 #' @param fixedpars a vector of parameters for all features+components.
 #' @param seedpars a vector of parameters for all features+components to seed non-linear parameter search.
-#' @param covariates A list of components that interacts with component by feature in the main specification.
+#' @param interacts A list of components that interacts with component by feature in the main specification.
 #' @param curvefeats vector of columns to use with "diff" functions
 #' @param dualfit TRUE or FALSE, fit a simple latency using logit. Requires Duration..sec. column in data.
 #' @param cv TRUE or FALSE, if TRUE runs N-fold cv. Requires premade column named 'fold' with integers denoting the N folds
 #' @param interc TRUE or FALSE, include a global intercept.
-#' @param elastic glmnet, cv.glmnet, cva.glmnet or FALSE.
 #' @param verbose provides more output in some cases.
 #' @param epsilon passed to LiblineaR
 #' @param cost passed to LiblineaR
@@ -65,92 +65,20 @@ computeSpacingPredictors <- function(data, KCs) {
 #' @param autoKC a vector to indicate whether to use autoKC for the component (0) or the k for the numebr of clusters
 #' @param autoKCcont a vector of text strings set to "rand" for component to make autoKC assignment to cluster is randomized (for comaprison)
 #' @param connectors a vector if linear equation R operators including +, * and :
+#' @param nosolve causes the function to return a sparse data matrix of the features, rather than a solution
+#' @param factrv controls the optim() function
 #' @return list of values "model", "coefs", "r2", "prediction", "nullmodel", "latencymodel", "optimizedpars","subjectrmse", "newdata", and "automat"
 #' @export
-#' @examples
-#' temp <- samplelkt
-#' temp$CF..ansbin.<-ifelse(temp$Outcome=="CORRECT",1,ifelse(temp$Outcome=="INCORRECT",0,-1))
-#' temp <- data.table::setDT(temp)
-#' temp <- computeSpacingPredictors(temp, "KC..Default.")
-#' temp <- temp[temp$CF..ansbin==0 | temp$CF..ansbin.==1,]
-#' temp$KC..Default.<-substr(temp$KC..Default.,1,10)
-#' modelob <- LKT(
-#'   data = temp, interc=TRUE,
-#'   components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#'   features = c("logitdec", "logitdec", "lineafm"),
-#'   fixedpars = c(.9, .85)
-#' )
-#' print(modelob$coefs)
-#' print(modelob$loglik)
-#'
-#' modelob <- LKT(
-#'   data = temp, interc=TRUE,
-#'   components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#'   features = c("logitdec", "logitdec", "lineafm"),
-#'   seedpars = c(.9, .85)
-#' )
-#' print(modelob$coefs)
-#' print(modelob$loglik)
-#'
-#' modelob <- LKT(
-#'   data = temp, interc=TRUE,
-#'   connectors = c("+","*","+"),
-#'   components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#'   features = c("intercept", "logitdec", "lineafm"),
-#'   fixedpars = c(.9, .85)
-#' )
-#' print(modelob$coefs)
-#' print(modelob$loglik)
-#'
-#' modelob <- LKT(
-#'   data = temp, interc=TRUE,
-#'   components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#'   features = c("logitdec", "logitdec$", "lineafm$"),
-#'   fixedpars = c(.9, .85)
-#' )
-#' print(modelob$coefs)
-#' print(modelob$loglik)
-#'
-#' # this example illustrates how mean fit is worse for CV
-#' # compared to the first example above. In this case,
-#' # this is mainly do to the small dataset allowing overgeneralization
-#' # despite the model only having 4 coefficients
-#' temp <- samplelkt
-#' unq <- sample(unique(temp$Anon.Student.Id))
-#' sfold <- rep(1:5,length.out=length(unq))
-#' temp$fold <- rep(0,length(temp[,1]))
-#' for(i in 1:5){temp$fold[which(temp$Anon.Student.Id %in% unq[which(sfold==i)])]=i}
-#' modelob <- LKT(
-#'      data = temp, interc=TRUE,
-#'       components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#'       features = c("logitdec", "logitdec", "lineafm"),
-#'       fixedpars = c(.9, .85),cv=TRUE
-#'   )
-#' print(modelob$cv_res)
-#' print(mean(modelob$cv_res$rmse))
-#' print(mean(modelob$cv_res$mcfad))
-#'
-#' # this example illustrates the limitation of CV when data does not contain
-#' # sufficient examples of each predictor
-#' #modelob <- LKT(
-#' #  data = temp, interc=TRUE,
-#' #  components = c("Anon.Student.Id", "KC..Default.", "KC..Default."),
-#' #  features = c("logitdec", "logitdec$", "lineafm$"),
-#' #  fixedpars = c(.9, .85),cv=TRUE
-#' #)
-#' #print(modelob$cv_res)
-#'
 LKT <- function(data,
                 components,
                 features,
                 fixedpars = NA,
                 seedpars = NA,
-                covariates = NA,
+                interacts = NA,
                 curvefeats = NA,
                 dualfit = FALSE,
                 interc = FALSE,
                 cv=FALSE,
-                elastic = FALSE,
                 verbose = TRUE,
                 epsilon = 1e-4,
                 cost = 512,
@@ -160,9 +88,11 @@ LKT <- function(data,
                 maketimes = FALSE,
                 bias = 0,
                 maxitv=100,
+                factrv=1e12,
+                nosolve=FALSE,
                 autoKC=rep(0,length(components)),
                 autoKCcont = rep("NA",length(components)),
-                connectors= rep("+",length(components)-1)) {
+                connectors= rep("+",max(1,length(components)-1))) {
   connectors<-c("+",connectors)
   if (maketimes) {
     if (!("CF..reltime." %in% colnames(data))) {
@@ -178,7 +108,6 @@ LKT <- function(data,
   if (!("CF..ansbin." %in% colnames(data))) {
     data$CF..ansbin. <- ifelse(data$Outcome == "CORRECT", 1, 0)
   }
-
   equation <- "CF..ansbin.~ "
   e <- new.env()
   e$data <- data
@@ -204,20 +133,18 @@ LKT <- function(data,
       k <- k + 1
 
       #setup the curvilinear feature input for inverted U shaped learning features
-      if(!is.na(curvefeats)){
-        if(!is.na(curvefeats[k])){
+     if(!is.na(curvefeats[k])){
           e$data$curvefeat<- paste(eval(parse(text = paste("e$data$", curvefeats[k],sep = ""))), sep = "")
           e$data$curvefeat<-as.numeric(e$data$curvefeat)
-        }}
-      else {
-        if("pred" %in% colnames(e$data)){
+        }
+      else if ("pred" %in% colnames(e$data)){
           e$data$curvefeat<-e$data$pred
-        }}
+        }
 
       # track parameters used
       if (gsub("[$@]", "", i) %in% c(
         "powafm", "recency", "recencysuc", "recencyfail", "errordec", "propdec", "propdec2",
-        "logitdec", "base", "expdecafm", "expdecsuc", "expdecfail", "dashafm", "dashsuc", "dashfail",
+        "logitdec","baseratepropdec", "base", "expdecafm", "expdecsuc", "expdecfail", "dashafm", "dashsuc", "dashfail",
         "base2", "base4", "basesuc", "basefail", "logit", "base2suc", "base2fail", "ppe",
         "base5suc", "base5fail", "clogitdec", "crecency"
       )) {
@@ -292,7 +219,6 @@ LKT <- function(data,
         m <- m + 1
       }
 
-
       if(autoKC[k]>1){
         CF..ansbin.<-NULL
         aggdata<- e$data[,mean(CF..ansbin.),
@@ -351,7 +277,6 @@ LKT <- function(data,
 
       if (e$flag == TRUE | e$counter < 2) {
 
-        # print(components)
         # count an effect only when counted factor level is of specific type
         if (length(grep("%", components[k]))) {
           KCs <- strsplit(components[k], "%")
@@ -381,19 +306,13 @@ LKT <- function(data,
           Anon.Student.Id<-index<-indexcomp<-NULL
           vec <- eval(parse(text = paste0("e$data$", components[k])))
           e$data[, index := do.call(paste0, list(vec, Anon.Student.Id))]
-          # print(e$data$index[1:200])
           e$data[, indexcomp := vec]
-          # print(e$data$indexcomp[1:200])
-          # e$data$indexcomp<-(eval(parse(text=paste0("e$data$",components[k]))))
-          # e$data[,indexcomp:=do.call(texteval,list(paste0("e$data$",components[k])))]
           if (!(i %in% c("numer", "intercept"))) {
             e$data$cor <- countOutcome(e$data, e$data$index, "CORRECT")
             e$data$icor <- countOutcome(e$data, e$data$index, "INCORRECT")
           }
         }
       }
-
-
 
       if (e$flag == TRUE | e$counter < 2) {
         e$flag <- FALSE
@@ -406,11 +325,17 @@ LKT <- function(data,
           )))
         } else {
           # fixed effect
-
-          eval(parse(text = paste("e$data$", gsub("\\$", "", i), gsub("[%]", "", components[k]),
-                                  "<-computefeatures(e$data,i,para,parb,e$data$index,e$data$indexcomp,
+          if(nosolve==FALSE){
+            eval(parse(text = paste("e$data$", gsub("\\$", "", i), gsub("[%]", "", components[k]),
+                                    "<-computefeatures(e$data,i,para,parb,e$data$index,e$data$indexcomp,
                               parc,pard,pare,components[k])",
-                                  sep = "")))
+                                    sep = "")))} else
+                                    {
+                                      eval(parse(text = paste("e$data$", gsub("\\$", "", i),if(exists("para"))
+                                        {para}else{""}, gsub("[%]", "", components[k]),
+                                        "<-computefeatures(e$data,i,para,parb,e$data$index,e$data$indexcomp,
+                                        parc,pard,pare,components[k])",sep = "")))
+                                    }
         }
       }
 
@@ -433,26 +358,26 @@ LKT <- function(data,
         ))
       }
 
-      if (exists("para")) {rm(para)}
-      if (exists("parb")) {rm(parb)}
-      if (exists("parc")) {rm(parc)}
-      if (exists("pard")) {rm(pard)}
-      if (exists("pare")) {rm(pare)      }
-
-
       if (connectors[k]=="*"){connector<-"*"}  else if (connectors[k]==":") {connector<-":"} else {connector<-"+"}
       if (right(i, 1) == "$") {
         # add the fixed effect feature to the model with a coefficient per level
         cleanfeat <- gsub("\\$", "", i)
-        if (is.na(covariates[k])) {
+        if (is.na(interacts[k])) {
           # standard way with a coefficient per component
-          eval(parse(text = paste("eq<-paste(cleanfeat,components[k],\":e$data$\",components[k],
+          if(nosolve==FALSE){eval(parse(text = paste("eq<-paste(cleanfeat,components[k],\":e$data$\",components[k],
+                                connector,eq,sep=\"\")")))}else{
+                                  eval(parse(text = paste("eq<-paste(cleanfeat,if(exists(\"para\")){para}else{\"\"},components[k],\":e$data$\",components[k],
                                 connector,eq,sep=\"\")")))
+                                }
         }
         else {
-          eval(parse(text = paste("eq<-paste(cleanfeat,components[k],\":e$data$\",components[k]
-                                ,\":\",covariates[k]
+          if(nosolve==FALSE){eval(parse(text = paste("eq<-paste(cleanfeat,components[k],\":e$data$\",components[k]
+                                ,\":\",interacts[k]
+                                ,connector,eq,sep=\"\")")))}else{
+                                  eval(parse(text = paste("eq<-paste(cleanfeat,if(exists(\"para\")){para}else{\"\"},components[k],\":e$data$\",components[k]
+                                ,\":\",interacts[k]
                                 ,connector,eq,sep=\"\")")))
+                                }
         }
       }
 
@@ -463,128 +388,120 @@ LKT <- function(data,
 
       else {
         # add the fixed effect feature to the model with the same coefficient for all levels
-        if (is.na(covariates[k])) {
+        if (is.na(interacts[k])) {
           # standard way with single coefficient
-          eval(parse(text = paste("eq<-paste(i,gsub('[%]','',components[k]),connector,eq,sep=\"\")")))
+          if(nosolve==FALSE){
+            eval(parse(text = paste("eq<-paste(i,gsub('[%]','',components[k]),connector,eq,sep=\"\")")))
+          }
+          else
+          {
+            eval(parse(text = paste("eq<-paste(i,if(exists(\"para\")){para}else{\"\"},
+                                      gsub('[%]','',components[k]),connector,eq,sep=\"\")")))
+          }
         }
         else {
-          eval(parse(text = paste("eq<-paste(i,gsub('[%]','',components[k]),\":\",covariates[k]
+          if(nosolve==FALSE){
+            eval(parse(text = paste("eq<-paste(i,gsub('[%]','',components[k]),\":\",interacts[k]
+                                  ,connector,eq,sep=\"\")")))}else
+                                  {
+                                    eval(parse(text = paste("eq<-paste(i,if(exists(\"para\")){para}else{\"\"},gsub('[%]','',components[k]),\":\",interacts[k]
                                   ,connector,eq,sep=\"\")")))
-        }
-      }
+                                  }}}
+      if (exists("para")) {rm(para)}
+      if (exists("parb")) {rm(parb)}
+      if (exists("parc")) {rm(parc)}
+      if (exists("pard")) {rm(pard)}
+      if (exists("pare")) {rm(pare)}
     }
+
+
     if (verbose) {
       cat(paste(eq, "\n"))
     }
     e$form <- as.formula(paste(equation, eq, sep = ""))
+
     if (any(grep("[@]", features)) & dualfit == FALSE) {
       temp <- glmer(e$form, data = e$data, family = binomial(logit))
       fitstat <- logLik(temp)
-    } else {
-      if (elastic == "glmnet") {
-        temp <- glmnet(e$form, data = e$data, family = "binomial")
-        plot(temp, xvar = "lambda", label = TRUE)
-        print(temp)
-      } else
-        if (elastic == "cv.glmnet") {
-          temp <- cv.glmnet(e$form, data = e$data, family = "binomial")
-          plot(temp)
-          print(temp)
-          print(coef(temp, s = "lambda.min"))
-        } else
-          if (elastic == "cva.glmnet") {
-            temp <- cva.glmnet(e$form, data = e$data, family = "binomial")
-            plot(temp)
-            print(temp)
-          } else {
+    } else  {
 
-            predictset <- sparse.model.matrix(e$form, e$data)
-            predictset.csc <- new("matrix.csc",
-                                  ra = predictset@x,
-                                  ja = predictset@i + 1L,
-                                  ia = predictset@p + 1L,
-                                  dimension = predictset@Dim
-            )
-            predictset.csr <- as.matrix.csr(predictset.csc)
-            predictset2 <- predictset.csr
+      predictset <- sparse.model.matrix(e$form, e$data)
+      predictset.csc <- new("matrix.csc",
+                            ra = predictset@x,
+                            ja = predictset@i + 1L,
+                            ia = predictset@p + 1L,
+                            dimension = predictset@Dim
+      )
+      predictset.csr <- as.matrix.csr(predictset.csc)
+      predictset2 <- predictset.csr
+      if(nosolve==FALSE){
+        temp <- LiblineaR(predictset2, e$data$CF..ansbin.,
+                          bias = bias,
+                          cost = cost, epsilon = epsilon, type = type
+        )
+        if(temp$ClassNames[1]==0){temp$W=temp$W*(-1)}
+        modelvs <- data.frame(temp$W)
+        colnames(modelvs) <- colnames(predictset)
+        e$modelvs <- t(modelvs)
+        colnames(e$modelvs) <- "coefficient"
+        success <- FALSE
+        while (!success) {
+          # do something
+          e$data$pred <- pmin(pmax(predict(temp, predictset2, proba = TRUE)$probabilities[, 1],
+                                   .00001),.99999)
+          # check for success
+          success <- sum(is.nan(e$data$pred)) == 0}
 
-            temp <- LiblineaR(predictset2, e$data$CF..ansbin.,
-                              bias = bias,
-                              cost = cost, epsilon = epsilon, type = type
-            )
+        if(cv==TRUE){
+          #all in one version, run through it 5 times
+          cv_rmse<-rep(0,length(unique(e$data$fold)))
+          cv_mcfad<-rep(0,length(unique(e$data$fold)))
+          for(i in 1:length(unique(e$data$fold))){
+            idx1 = which(e$data$fold!=i)
+            e1_tmp = e$data[idx1,]
 
-            if(temp$ClassNames[1]==0){temp$W=temp$W*(-1)}
+            predictsetf1=slice(t(predictset),idx1)
+            predictsetf1=t(predictsetf1)
+            predictsetf1.csc <- new("matrix.csc", ra = predictsetf1@x,
+                                    ja = predictsetf1@i + 1L,
+                                    ia = predictsetf1@p + 1L,
+                                    dimension = predictsetf1@Dim)
+            predictsetf1.csr <- as.matrix.csr(predictsetf1.csc)
+            idx2 = which(e$data$fold==i)
+            e2_tmp = e$data[idx2,]
+            predictsetf2=slice(t(predictset),idx2)
+            predictsetf2=t(predictsetf2)
+            predictsetf2.csc <- new("matrix.csc", ra = predictsetf2@x,
+                                    ja = predictsetf2@i + 1L,
+                                    ia = predictsetf2@p + 1L,
+                                    dimension = predictsetf2@Dim)
+            predictsetf2.csr <- as.matrix.csr(predictsetf2.csc)
+            tempTr<-LiblineaR(predictsetf1.csr,e1_tmp$CF..ansbin.,bias=0,
+                              cost=512,epsilon=.0001,type=0)
+            #fit test data too to get null model for mcfad
+            if(tempTr$ClassNames[1]==0){tempTr$W=tempTr$W*(-1)}
 
-            modelvs <- data.frame(temp$W)
+            pred3<-predict(tempTr,predictsetf2.csr,proba=TRUE)$probabilities[,1]
 
-            colnames(modelvs) <- colnames(predictset)
-
-            e$modelvs <- t(modelvs)
-
-            colnames(e$modelvs) <- "coefficient"
-
-              success <- FALSE
-              while (!success) {
-                # do something
-                e$data$pred <- pmin(pmax(predict(temp, predictset2, proba = TRUE)$probabilities[, 1],
-                                         .00001),.99999)
-
-                # check for success
-                success <- sum(is.nan(e$data$pred)) == 0}
-
-         #   e$data$pred <- pmin(pmax(predict(temp, predictset2, proba = TRUE)$probabilities[, 1],.001),.999)
-
-            if(cv==TRUE){
-              #all in one version, run through it 5 times
-              cv_rmse<-rep(0,length(unique(e$data$fold)))
-              cv_mcfad<-rep(0,length(unique(e$data$fold)))
-              for(i in 1:length(unique(e$data$fold))){
-                idx1 = which(e$data$fold!=i)
-                e1_tmp = e$data[idx1,]
-
-                predictsetf1=slice(t(predictset),idx1)
-                predictsetf1=t(predictsetf1)
-                predictsetf1.csc <- new("matrix.csc", ra = predictsetf1@x,
-                                        ja = predictsetf1@i + 1L,
-                                        ia = predictsetf1@p + 1L,
-                                        dimension = predictsetf1@Dim)
-                predictsetf1.csr <- as.matrix.csr(predictsetf1.csc)
-                idx2 = which(e$data$fold==i)
-                e2_tmp = e$data[idx2,]
-                predictsetf2=slice(t(predictset),idx2)
-                predictsetf2=t(predictsetf2)
-                predictsetf2.csc <- new("matrix.csc", ra = predictsetf2@x,
-                                        ja = predictsetf2@i + 1L,
-                                        ia = predictsetf2@p + 1L,
-                                        dimension = predictsetf2@Dim)
-                predictsetf2.csr <- as.matrix.csr(predictsetf2.csc)
-                tempTr<-LiblineaR(predictsetf1.csr,e1_tmp$CF..ansbin.,bias=0,
-                                  cost=512,epsilon=.0001,type=0)
-                #fit test data too to get null model for mcfad
-                if(tempTr$ClassNames[1]==0){tempTr$W=tempTr$W*(-1)}
-
-                pred3<-predict(tempTr,predictsetf2.csr,proba=TRUE)$probabilities[,1]
-
-                e1_ansbin <-e1_tmp$CF..ansbin.
-                e2_ansbin <-e2_tmp$CF..ansbin.
-                #mcfad time
-                cv_fitstat<- sum(log(ifelse(e2_ansbin==1,pred3,1-pred3)))
-                cv_nullmodel<-glm(as.formula(paste("CF..ansbin.~ 1",sep="")),data=e2_tmp,family=binomial(logit))
-                cv_nullfit<-logLik(cv_nullmodel)
-                cv_mcfad[i]= round(1-cv_fitstat/cv_nullfit,6)
-                cv_rmse[i] = sqrt(mean((e2_tmp$CF..ansbin.-pred3)^2))
-              }
-
-              e$cv_res = data.frame("rmse" = cv_rmse,"mcfad" = cv_mcfad)
-            }else{e$cv_res = data.frame("rmse" = rep(NA,5),"mcfad" = rep(NA,5))}
-
-            fitstat <- sum(log(ifelse(e$data$CF..ansbin. == 1, e$data$pred, 1 - e$data$pred)))
-
-            # e$data<-e$data[order(e$data$Anon.Student.Id,e$data$CF..Time.),]
+            e1_ansbin <-e1_tmp$CF..ansbin.
+            e2_ansbin <-e2_tmp$CF..ansbin.
+            #mcfad time
+            cv_fitstat<- sum(log(ifelse(e2_ansbin==1,pred3,1-pred3)))
+            cv_nullmodel<-glm(as.formula(paste("CF..ansbin.~ 1",sep="")),data=e2_tmp,family=binomial(logit))
+            cv_nullfit<-logLik(cv_nullmodel)
+            cv_mcfad[i]= round(1-cv_fitstat/cv_nullfit,6)
+            cv_rmse[i] = sqrt(mean((e2_tmp$CF..ansbin.-pred3)^2))
           }
+
+          e$cv_res = data.frame("rmse" = cv_rmse,"mcfad" = cv_mcfad)
+        }else{e$cv_res = data.frame("rmse" = rep(NA,5),"mcfad" = rep(NA,5))}
+
+        fitstat <- sum(log(ifelse(e$data$CF..ansbin. == 1, e$data$pred, 1 - e$data$pred)))
+      }
     }
 
-    if (dualfit == TRUE && elastic == FALSE) { # fix for Liblin
+
+    if (dualfit == TRUE) { # fix for Liblin
       rt.pred <- exp(-qlogis(e$data$pred[which(e$data$CF..ansbin. == 1)]))
       outVals <- boxplot(e$data$Duration..sec., plot = FALSE)$out
       outVals <- which(e$data$Duration..sec. %in% outVals)
@@ -594,14 +511,13 @@ LKT <- function(data,
       } # Winsorize outliers
       the.rt <- e$data$Duration..sec.[which(e$data$CF..ansbin. == 1)]
       e$lm.rt <- lm(the.rt ~ as.numeric(rt.pred))
-      # print(e$lm.rt)
       fitstat2 <- cor(the.rt, predict(e$lm.rt, type = "response"))^2
       if (verbose) {
         cat(paste("R2 (cor squared) latency: ", fitstat2, "\n", sep = ""))
       }
     }
-    e$temp <- temp
-    if (elastic == FALSE) {
+    if(nosolve==FALSE){
+      e$temp <- temp
       e$nullmodel <- glm(as.formula(paste("CF..ansbin.~ 1", sep = "")), data = e$data, family = binomial(logit))
       e$nullfit <- logLik(e$nullmodel)
       e$loglike <- fitstat
@@ -616,95 +532,95 @@ LKT <- function(data,
         cat(paste("\n\n"))
       }
       -fitstat[1]
-    }
-    else {
-      NULL
-    }
+    } else {list(
+      colnames(predictset),predictset2)}
   }
+  if(nosolve==FALSE){
+    parlength <-
+      sum("powafm" == gsub("[$]", "", features)) +
+      sum("recency" == gsub("[$]", "", features)) +
+      sum("crecency" == gsub("[$]", "", features)) +
+      sum("recencysuc" == gsub("[$]", "", features)) +
+      sum("recencyfail" == gsub("[$]", "", features)) +
+      sum("logit" == gsub("[$]", "", features)) +
+      sum("errordec" == gsub("[$]", "", features)) +
+      sum("propdec" == gsub("[$]", "", features)) +
+      sum("propdec2" == gsub("[$]", "", features)) +
+      sum("logitdec" == gsub("[$]", "", features)) +
+      sum("baseratepropdec" == gsub("[$]", "", features)) +
+      sum("clogitdec" == gsub("[$]", "", features)) +
+      sum("base" == gsub("[$]", "", features)) +
+      sum("expdecafm" == gsub("[$]", "", features)) +
+      sum("expdecsuc" == gsub("[$]", "", features)) +
+      sum("expdecfail" == gsub("[$]", "", features)) +
+      sum("base2" == gsub("[$]", "", features)) * 2 +
+      sum("base4" == gsub("[$]", "", features)) * 4 +
+      sum("ppe" == gsub("[$]", "", features)) * 4 +
+      sum("basefail" == gsub("[$]", "", features)) +
+      sum("basesuc" == gsub("[$]", "", features)) +
+      sum("base2suc" == gsub("[$]", "", features)) * 2 +
+      sum("base2fail" == gsub("[$]", "", features)) * 2 +
+      sum("dashafm" == gsub("[$]", "", features)) +
+      sum("dashsuc" == gsub("[$]", "", features)) +
+      sum("dashfail" == gsub("[$]", "", features)) +
+      sum("base5suc" == gsub("[$]", "", features)) * 5 +
+      sum("base5fail" == gsub("[$]", "", features)) * 5 -
+      sum(!is.na(e$fixedpars))
 
-  # count # of parameters
-  parlength <-
-    sum("powafm" == gsub("[$]", "", features)) +
-    sum("recency" == gsub("[$]", "", features)) +
-    sum("crecency" == gsub("[$]", "", features)) +
-    sum("recencysuc" == gsub("[$]", "", features)) +
-    sum("recencyfail" == gsub("[$]", "", features)) +
-    sum("logit" == gsub("[$]", "", features)) +
-    sum("errordec" == gsub("[$]", "", features)) +
-    sum("propdec" == gsub("[$]", "", features)) +
-    sum("propdec2" == gsub("[$]", "", features)) +
-    sum("logitdec" == gsub("[$]", "", features)) +
-    sum("clogitdec" == gsub("[$]", "", features)) +
-    sum("base" == gsub("[$]", "", features)) +
-    sum("expdecafm" == gsub("[$]", "", features)) +
-    sum("expdecsuc" == gsub("[$]", "", features)) +
-    sum("expdecfail" == gsub("[$]", "", features)) +
-    sum("base2" == gsub("[$]", "", features)) * 2 +
-    sum("base4" == gsub("[$]", "", features)) * 4 +
-    sum("ppe" == gsub("[$]", "", features)) * 4 +
-    sum("basefail" == gsub("[$]", "", features)) +
-    sum("basesuc" == gsub("[$]", "", features)) +
-    sum("base2suc" == gsub("[$]", "", features)) * 2 +
-    sum("base2fail" == gsub("[$]", "", features)) * 2 +
-    sum("dashafm" == gsub("[$]", "", features)) +
-    sum("dashsuc" == gsub("[$]", "", features)) +
-    sum("dashfail" == gsub("[$]", "", features)) +
-    sum("base5suc" == gsub("[$]", "", features)) * 5 +
-    sum("base5fail" == gsub("[$]", "", features)) * 5 -
-    sum(!is.na(e$fixedpars))
+    # number of seeds is just those pars specified and not fixed
+    seeds <- e$seedpars[is.na(e$fixedpars)]
+    seeds[is.na(seeds)] <- .5 # if not set seeds set to .5
 
-  # number of seeds is just those pars specified and not fixed
-  seeds <- e$seedpars[is.na(e$fixedpars)]
-  seeds[is.na(seeds)] <- .5 # if not set seeds set to .5
-
-  # optimize the model
-  if (parlength > 0) {
-    optimizedpars <- optim(seeds, modelfun, method = c("L-BFGS-B"), lower = lowb, upper = highb, control = list(maxit = maxitv))
-  } else
-    # no nolinear parameters
-  {
-    modelfun(numeric(0))
-  }
-
-  # report
-  if (dualfit == TRUE && elastic == FALSE) {
-    failureLatency <- mean(e$data$Duration..sec.[which(e$data$CF..ansbin. == 0)])
-    Scalar <- coef(e$lm.rt)[2]
-    Intercept <- coef(e$lm.rt)[1]
-    if (verbose) {
-      cat(paste("Failure latency: ", failureLatency, "\n"))
-      cat(paste("Latency Scalar: ", Scalar, "\n",
-                "Latency Intercept: ", Intercept, "\n",
-                sep = ""
-      ))
+    # optimize the model
+    if (parlength > 0) {
+      optimizedpars <- optim(seeds, modelfun, method = c("L-BFGS-B"), lower = lowb,
+                             upper = highb, control = list(maxit = maxitv,factr = factrv))
+    } else
+      # no nolinear parameters fit
+    {
+      modelfun(numeric(0))
     }
-  }
 
-  results <- list(
-    "model" = e$temp,
-    "coefs" = e$modelvs,
-    "r2" = e$mcfad,
-    "prediction" = if ("pred" %in% colnames(e$data)) {
-      e$data$pred
-    },
-    "nullmodel" = e$nullmodel,
-    "latencymodel" = if (dualfit == TRUE) {
-      list(e$lm.rt, failureLatency)
-    },
-    "optimizedpars" = if (exists("optimizedpars")) {
-      optimizedpars
-    },
-    "studentRMSE" = if ("pred" %in% colnames(e$data)) {
-      aggregate((e$data$pred - e$data$CF..ansbin.)^2,
-                by = list(e$data$Anon.Student.Id), FUN = mean
-      )
-    },
-    "newdata" = e$data,
-    "cv_res" = e$cv_res,
-    "loglike" = e$loglike,
-    "automat" = e$df
-  )
-  results$studentRMSE[,2]<-sqrt(results$studentRMSE[,2])
+    # report
+    if (dualfit == TRUE ) {
+      failureLatency <- mean(e$data$Duration..sec.[which(e$data$CF..ansbin. == 0)])
+      Scalar <- coef(e$lm.rt)[2]
+      Intercept <- coef(e$lm.rt)[1]
+      if (verbose) {
+        cat(paste("Failure latency: ", failureLatency, "\n"))
+        cat(paste("Latency Scalar: ", Scalar, "\n",
+                  "Latency Intercept: ", Intercept, "\n",
+                  sep = ""))
+      }
+    }
+
+    results <- list(
+      "model" = e$temp,
+      "coefs" = e$modelvs,
+      "r2" = e$mcfad,
+      "prediction" = if ("pred" %in% colnames(e$data)) {
+        e$data$pred
+      },
+      "nullmodel" = e$nullmodel,
+      "latencymodel" = if (dualfit == TRUE) {
+        list(e$lm.rt, failureLatency)
+      },
+      "optimizedpars" = if (exists("optimizedpars")) {
+        optimizedpars
+      } else NA,
+      "studentRMSE" = if ("pred" %in% colnames(e$data)) {
+        aggregate((e$data$pred - e$data$CF..ansbin.)^2,
+                  by = list(e$data$Anon.Student.Id), FUN = mean)
+        },
+      "newdata" = e$data,
+      "cv_res" = e$cv_res,
+      "loglike" = e$loglike,
+      "automat" = e$df
+    )
+    results$studentRMSE[,2]<-sqrt(results$studentRMSE[,2])}
+  else{
+      results <- list(
+        "lassodata"=modelfun(numeric(0)))}
   return(results)
 }
 
@@ -903,7 +819,6 @@ computefeatures <- function(data, feat, par1, par2, index, index2, par3, par4, p
     data$CF..trueage. <- data$CF..Time. - data$mintime
     data$CF..intage. <- data$CF..reltime. - data$minreltime
     data$CF..age. <- (data$CF..trueage. - data$CF..intage.) * par2 + data$CF..intage.
-    # print(c(par1,par2))
     return(log(1 + data$icor) * ave(data$CF..age., index, FUN = function(x) baselevel(x, par1)))
   }
   if (feat == "base2suc") {
@@ -912,7 +827,6 @@ computefeatures <- function(data, feat, par1, par2, index, index2, par3, par4, p
     data$CF..trueage. <- data$CF..Time. - data$mintime
     data$CF..intage. <- data$CF..reltime. - data$minreltime
     data$CF..age. <- (data$CF..trueage. - data$CF..intage.) * par2 + data$CF..intage.
-    # print(c(par1,par2))
     return(log(1 + data$cor) * ave(data$CF..age., index, FUN = function(x) baselevel(x, par1)))
   }
 
@@ -935,13 +849,16 @@ computefeatures <- function(data, feat, par1, par2, index, index2, par3, par4, p
   if (feat == "logitdec") {
     return(ave(data$CF..ansbin., index, FUN = function(x) slidelogitdec(x, par1)))
   }
+  if (feat == "baseratepropdec") {
+    return(as.numeric(ave(index2, data$Anon.Student.Id, FUN = function(x) baserateslidedec(x, par1))))
+  }
   if (feat == "prop") {
     ifelse(is.nan(data$cor / (data$cor + data$icor)), .5, data$cor / (data$cor + data$icor))
   }
 }
 
 #boot function for LKT_HDI
-boot_fn <- function(dat,n_students,components,features,covariates,fixedpars){
+boot_fn <- function(dat,n_students,components,features,interacts,fixedpars){
 
 
   dat_ss = smallSet(dat,n_students)
@@ -975,7 +892,6 @@ get_hdi <- function(par_reps,cred_mass=.95){
 getFeedDur <- function(data, index) {
   temp <- rep(0, length(data$CF..ansbin.))
   for (i in unique(index)) {
-    # print(i)
     le <- length(data$time_to_answer[index == i])
     subtemp <- data$time_since_prior_probe[index == i] - data$time_to_answer_inferred[index == i]
     subtemp <- subtemp[2:(le - 1)]
@@ -1008,13 +924,19 @@ slice <- function(tSparse, index) {
 #' @param response the actually response value being counted
 #' @return the vector of the lagged cumulative sum.
 #' @export
-countOutcome <- function(data, index, response) {
+countOutcomeold <- function(data, index, response) {
   temp <- Outcome <- NULL
   data[, temp := cumsum(Outcome == response), by = index]
   data[Outcome == response, temp := temp - 1, by = index]
   data$temp
 }
 
+countOutcome <- function(data, index, response) {
+  temp <- Outcome <- NULL
+  data[, temp := cumsum(Outcome == response), by = index]
+  data[Outcome == response, temp := temp - 1]
+  return(data$temp)
+}
 
 
 countOutcomeDash <- function(times, scalev) {
@@ -1037,20 +959,14 @@ countOutcomeDashPerf <- function(datav, seeking, scalev) {
   temp <- rep(0, length(datav[, 1]))
 
   for (s in unique(datav[, 3])) {
-    # print(s)
     l <- length(datav[, 1][datav[, 3] == s])
     v1 <- c(rep(0, l))
     v2 <- c(rep(0, l))
     r <- as.character(datav[, 2][datav[, 3] == s]) == seeking
-
-    # print(r)
     v1[1] <- 0
     v2[1] <- v1[1] + r[1]
     if (l > 1) {
       spacings <- as.numeric(datav[, 1][datav[, 3] == s][2:l]) - as.numeric(datav[, 1][datav[, 3] == s][1:(l - 1)])
-      #  print(c(scalev))
-      # print(spacings)
-      #   print(r)
       for (i in 2:l) {
         v1[i] <- v2[i - 1] * exp(-spacings[i - 1] / (scalev * 86400))
         v2[i] <- v1[i] + r[i]
@@ -1151,65 +1067,51 @@ practiceTime <- function(data) {
 
 # computes spacing from prior repetition for index (in seconds)
 componentspacing <- function(data, index, times) {
-  temp <- rep(0, length(data$CF..ansbin.))
-  for (i in unique(index)) {
-    lv <- length(data$CF..ansbin.[index == i])
-    if (lv > 1) {
-      temp[index == i] <- c(0, times[index == i][2:(lv)] - times[index == i][1:(lv - 1)])
-    }
-  }
+
+  temp <- numeric(nrow(data)) # initialize temp as a numeric vector
+
+  # calculate the differences within each group and assign to temp
+  temp <- ave(times, index, FUN=function(x) c(0, diff(x)))
+
   return(temp)
 }
 
 componentprev <- function(data, index, answers) {
-  temp <- rep(0, length(data$CF..ansbin.))
-  for (i in unique(index)) {
-    lv <- length(data$CF..ansbin.[index == i])
-    if (lv > 1) {
-      temp[index == i] <- c(0, answers[index == i][1:(lv - 1)])
-    }
-  }
-  return(temp)
+  prev_answers <- ave(answers, index, FUN = function(x) c(0, head(x, -1)))
+  return(prev_answers)
 }
 
 # computes mean spacing
 meanspacingf <- function(data, index, spacings) {
-  temp <- rep(0, length(data$CF..ansbin.)) # computes mean spacing
-  for (i in unique(index)) {
-    j <- length(temp[index == i])
+  temp <- ave(spacings, index, FUN = function(x) {
+    j <- length(x)
+    tempx <- rep(0,j)
     if (j > 1) {
-      temp[index == i][2] <- -1
+      tempx[2] <- -1
     }
     if (j == 3) {
-      temp[index == i][3] <- spacings[index == i][2]
+      tempx[3] <- x[2]
     }
     if (j > 3) {
-      temp[index == i][3:j] <- cumsum(spacings[index == i][2:(j - 1)]) / (1:(j - 2))
+      tempx[3:j] <- cumsum(x[2:(j - 1)]) / (1:(j - 2))
     }
-  }
-  # runmean(spacings[index==i][2:(j-1)],k=25,alg=c("exact"),align=c("right"))}}
+    tempx
+  })
+
   return(temp)
 }
 
 laggedspacingf <- function(data, index, spacings) {
-  temp <- rep(0, length(data$CF..ansbin.))
-  for (i in unique(index)) {
-    j <- length(temp[index == i])
-    if (j > 1) {
-      temp[index == i][2] <- 0
-    }
-    if (j >= 3) {
-      temp[index == i][3:j] <- spacings[index == i][2:(j - 1)]
-    }
-  }
+
+  temp <- ave(spacings, index, FUN=function(x) c(0, head(x, -1)))
   return(temp)
 }
-
 
 errordec <- function(v, d) {
   w <- length(v)
   sum((c(0, v[1:w]) * d^((w):0)) / sum(d^((w + 1):0)))
 }
+
 slideerrordec <- function(x, d) {
   v <- c(rep(0, length(x)))
   for (i in 1:length(x)) {
@@ -1245,6 +1147,55 @@ logitdec <- function(v, d) {
   log(corv / incorv)
 }
 
+
+
+slidelogitdecfree <- function(x, d) {
+  v <- c(rep(0, length(x)))
+  for (i in 1:length(x)) {
+    v[i] <- logitdec(x[1:i], d)
+  }
+  return(c(0, v[1:length(x) - 1]))
+}
+
+slidelogitdec <- function(x, d) {
+  v <- c(rep(0, length(x)))
+  for (i in 1:length(x)) {
+    v[i] <- logitdec(x[max(1, i - 60):i], d)
+  }
+  return(c(0, v[1:length(x) - 1]))
+}
+
+baseratepropdec <- function(v, d) {
+  w <- length(v)
+  targetvalue <- v[w]
+  print(v)
+  v <- v==targetvalue
+  print(v)
+  corv <- sum(c(1, v[1:w]) * d^(w:0))
+  incorv <- sum(c(1, abs(v[1:w] - 1)) * d^(w:0))
+  log(corv / incorv)
+}
+
+baseratepropdec <- function(v, d) {
+  w <- length(v)
+  targetvalue <- v[w]
+  #print(v)
+  v <- v==targetvalue
+ #print(v)
+  corv <- sum((v[1:w-1]) * d^((w-1):1))
+  incorv <- sum(d^((w + 2):1))
+#  print(corv/incorv)
+  (corv / incorv)
+}
+
+baserateslidedec <- function(x, d) {
+  v <- c(rep(0, length(x)))
+  for (i in 1:length(x)) {
+    v[i] <- baseratepropdec(x[1:i], d)
+  }
+  return(v[1:length(x) ])
+}
+
 # exponential decay for sequence
 slideexpdec <- function(x, d) {
   v <- c(rep(0, length(x)))
@@ -1271,21 +1222,6 @@ slidepropdec2 <- function(x, d) {
   return(c(0, v[1:length(x) - 1]))
 }
 
-slidelogitdec <- function(x, d) {
-  v <- c(rep(0, length(x)))
-  for (i in 1:length(x)) {
-    v[i] <- logitdec(x[1:i], d)
-  }
-  return(c(0, v[1:length(x) - 1]))
-}
-
-slidelogitdec <- function(x, d) {
-  v <- c(rep(0, length(x)))
-  for (i in 1:length(x)) {
-    v[i] <- logitdec(x[max(1, i - 60):i], d)
-  }
-  return(c(0, v[1:length(x) - 1]))
-}
 
 
 # PPE weights
@@ -1319,8 +1255,6 @@ slideppetw <- function(x, d) {
   return(c(v[1:length(x)]))
 }
 
-
-
 # tkt main function
 baselevel <- function(x, d) {
   l <- length(x)
@@ -1347,11 +1281,9 @@ smallSet <- function(data, nSub) {
   return(smalldata)
 }
 
-
 texteval <- function(stringv) {
   eval(parse(text = stringv))
 }
-
 
 #' @title ViewExcel
 #' @export
@@ -1372,13 +1304,13 @@ ViewExcel <-function(df = .Last.value, file = tempfile(fileext = ".csv")) {
 #' @param n_students Number of students per subsample
 #' @param components components in model
 #' @param features features in model
-#' @param covariates covariates in model
+#' @param interacts interacts in model
 #' @param fixedpars fixed pars in model
 #' @param get_hdi boolean to decide if generating HDI per coefficient
 #' @param cred_mass credibility mass parameter to decide width of HDI
 #' @export
 #' @return list of values "par_reps", "mod_full", "coef_hdi"
-LKT_HDI <- function(dat,n_boot,n_students,components,features,covariates,fixedpars, get_hdi = TRUE, cred_mass = .95){
+LKT_HDI <- function(dat,n_boot,n_students,components,features,interacts,fixedpars, get_hdi = TRUE, cred_mass = .95){
 
   #first fit full to get all features to get all predictor names
   mod_full = LKT(setDT(dat),interc=TRUE,
@@ -1392,7 +1324,7 @@ LKT_HDI <- function(dat,n_boot,n_students,components,features,covariates,fixedpa
 
   for(i in 1:n_boot){
     #first trial, return the names and make the matrix
-    temp=boot_fn(dat,n_students,components,features,covariates,fixedpars)
+    temp=boot_fn(dat,n_students,components,features,interacts,fixedpars)
     idx = match(rownames(temp),colnames(par_reps))
     par_reps[i,idx] = as.numeric(temp)
     if(i==1){cat("0%")}else{cat(paste("...",round((i/n_boot)*100),"%",sep=""))}
@@ -1400,7 +1332,6 @@ LKT_HDI <- function(dat,n_boot,n_students,components,features,covariates,fixedpa
   }
   return(list("par_reps" = par_reps,"mod_full" = mod_full, coef_hdi = get_hdi(par_reps, cred_mass = .95)))
 }
-
 
 LKTStartupMessage <- function()
 {
@@ -1429,4 +1360,468 @@ LKTStartupMessage <- function()
     msg[1] <- paste("Package 'LKT' version", packageVersion("LKT"))
   packageStartupMessage(msg)
   invisible()
+}
+
+#' @title buildLKTModel
+#' @import pROC
+#' @import crayon
+#' @description Forward and backwards stepwise search for a set of features and components
+#' @description with tracking of nonlinear parameters.
+#' @param data is a dataset with Anon.Student.Id and CF..ansbin.
+#' @param allcomponents is search space for LKT components
+#' @param allfeatures is search space for LKT features
+#' @param currentcomponents components to start search from
+#' @param specialcomponents add special components (not crossed with features, only paired with special features 1 for 1)
+#' @param specialfeatures features for each special component (not crossed during search)
+#' @param forv the minimuum amount of improvement needed for the addition of a new term
+#' @param bacv the maximuum amount of loss for a term to be removed
+#' @param preset One of "static","AFM","PFA","advanced","AFMLLTM","PFALLTM","advancedLLTM"
+#' @param presetint should the intercepts be included for preset components
+#' @param currentfeatures features to start search from
+#' @param verbose passed to LKT
+#' @param traceCV produce a CV fromt he LKT method at the beginnign of each cycle
+#' @param currentfixedpars used for current features as an option to start
+#' @param maxitv passed to LKT
+#' @param interc passed to LKT
+#' @param forward TRUE or FALSE
+#' @param backward TRUE or FALSE
+#' @param metric One of "BIC","AUC","AIC", and "RMSE"
+#' @return list of values "tracetable" and "currentfit"
+#' @export
+buildLKTModel <- function(data,
+                          allcomponents,allfeatures,
+                          currentcomponents=c(),specialcomponents=c(),specialfeatures=c()
+                          ,forv,bacv,preset=NA,presetint=T,
+                          currentfeatures=c(),verbose=FALSE,traceCV=TRUE,
+                          currentfixedpars =c(),maxitv=10,interc = FALSE,
+                          forward= TRUE, backward=TRUE, metric="BIC"){
+
+  #allowable features in search space
+  allfeatlist<-c("numer","intercept","lineafm","logafm","logsuc","logfail","linesuc","linefail","propdec",
+                 "recency","expdecafm","recencysuc","recencyfail","logitdec","base2","ppe","base")
+
+  featpars<-c(0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,4,1)
+
+  if(!is.na(preset)){if(preset=="static"){allfeatures<-c("intercept")}
+
+
+    if(preset=="AFM"){allfeatures<-c("intercept","lineafm","logafm","lineafm")}
+
+    if(preset=="AFMLLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm","lineafm$","logafm$","lineafm$")}
+
+    if(preset=="PFA"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",  "linesuc","linefail")}
+
+    if(preset=="PFALLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",  "linesuc","linefail"
+                                         ,"lineafm$","logafm$","lineafm$", "logsuc$","logfail$",  "linesuc$","linefail$")}
+
+    if(preset=="advanced"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",
+                                          "linesuc","linefail", "logitdec","propdec","recency","base")}
+
+    if(preset=="advancedLLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",
+                                              "linesuc","linefail", "logitdec","propdec","recency","base","lineafm$","logafm$","lineafm$", "logsuc$","logfail$",
+                                              "linesuc$","linefail$")}
+    if(presetint==F){allfeatures<-allfeatures[allfeatures!="intercept"]}
+  }
+  currentfit<-list()
+  startfitscor <- Inf
+  currentfitscore<- Inf
+  k<-0
+  paramvec<-currentfixedpars
+  compstat<- c()
+
+  tracetable<- as.data.frame(matrix(data=NA,nrow=0,ncol=10))
+  x<-c("comp","feat","r2","ind","params","BIC","AUC","AIC","RMSE","action")
+  colnames(tracetable)<-x
+
+  if(length(currentcomponents)>0){
+    fixedparct<-0
+    for(ct in currentfeatures){
+
+      if(match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))>0){
+        fixedparct<-fixedparct+featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]}}
+    currentfit<-LKT(data = data, interc=interc,maxitv=maxitv,verbose=verbose,
+                    components = currentcomponents,
+                    features = currentfeatures,fixedpars = ifelse(is.na(currentfixedpars),rep(NA,fixedparct),currentfixedpars)
+                    ,cv=traceCV)
+
+    BICis<- (length(currentfit$coefs)+fixedparct)*log(length(currentfit$prediction))-2*currentfit$loglik
+    AUCis<- suppressMessages(auc(data$CF..ansbin.,currentfit$prediction)[1])
+    AICis<- (length(currentfit$coefs)+fixedparct)*2-2*currentfit$loglik
+    RMSEis<- sqrt(mean((data$CF..ansbin.-currentfit$prediction)^2))
+    if(traceCV){cat("\nStep",k,"results - pars ",length(currentfit$coefs)+fixedparct," current BIC",BICis,"current AIC",AICis,"current AUC",AUCis,
+                    "current RMSE",RMSEis," CV McFadden's R2",mean(currentfit$cv_res$mcfad),"\n")} else
+                    {cat("\nStep",k,"results - pars ",length(currentfit$coefs)+fixedparct," current BIC",BICis,"current AIC",AICis,"current AUC",AUCis,
+                         "current RMSE",RMSEis," McFadden's R2",currentfit$r2,"\n")}
+    cat(currentfeatures,"\n",currentcomponents,"\n")
+    if(!is.atomic(currentfit$optimizedpars)){
+      cat("pars",currentfit$optimizedpars$par,"\n")
+      paramvec<-currentfit$optimizedpars$par}
+    tracetable[nrow(tracetable) + 1,] =
+      list(comp=paste(currentcomponents,collapse=" "),feat=paste(currentfeatures,collapse=" "),r2=currentfit$r2,ind=0,params=length(currentfit$coefs)+fixedparct,
+           BIC=BICis,AUC=AUCis,AIC=AICis,RMSE=RMSEis,action=paste("starting model"))
+
+    switch(metric,
+           "AUC" = {
+             currentfitscore<- -AUCis},
+           "AIC" = {
+             currentfitscore<-AICis},
+           "BIC" = {
+             currentfitscore<-BICis},
+           "RMSE" = {
+             currentfitscore<-RMSEis},
+           "R2" = {
+             currentfitscore<- -currentfit$r2})
+  } else {
+    meancor<-mean(data$CF..ansbin.)
+    ll<- sum(log(ifelse(data$CF..ansbin.==1,meancor,1-meancor)))
+    BICis<- log(length(data$CF..ansbin.))-2*ll
+    AUCis<- .5
+    AICis<- 2-2*ll
+    RMSEis<- sqrt(mean((data$CF..ansbin.-mean(data$CF..ansbin.))^2))
+    tracetable[nrow(tracetable) + 1,] =
+      list(comp="none",feat="none",r2=0,ind=0,params=1,
+           BIC=BICis,AUC=AUCis,AIC=AICis,RMSE=RMSEis,action=paste("null model"))
+
+    switch(metric,
+           "AUC" = {
+             currentfitscore<- -AUCis},
+           "AIC" = {
+             currentfitscore<-AICis},
+           "BIC" = {
+             currentfitscore<-BICis},
+           "RMSE" = {
+             currentfitscore<-RMSEis},
+           "R2" = {
+             currentfitscore<- 0})
+  }
+
+  # create null model also and put that on graph
+
+  while (is.infinite(startfitscor) | currentfitscore!=startfitscor){
+    startfitscor<-currentfitscore
+
+    k<-k+1
+    cat(white$bgBlack$bold("\nStep ",k,"start\n"))
+    bestmod<-NULL
+    if(forward){
+      cat("\ntrying to add\n")
+      testtable<- as.data.frame(matrix(data=NA,nrow=0,ncol=10))
+      x<-c("comp","feat","r2","ind","params","BIC","AUC","AIC","RMSE","action")
+      colnames(testtable)<-x
+      ij<-0
+      complist<-c()
+      featlist<-c()
+      for(i in allcomponents){
+        for(j in allfeatures){
+          complist<-c(complist,i)
+          featlist<-c(featlist,j)
+        }}
+
+      complist<-c(specialcomponents, complist)
+      featlist<-c(specialfeatures, featlist)
+      for(w in 1:length(complist)){
+        i<-complist[w]
+        j<-featlist[w]
+
+
+        if(sum(paste(i,j) == data.frame(paste(currentcomponents,currentfeatures)))==1) next
+        ij<-ij+1
+        testfeatures <- c(currentfeatures,j)
+        testcomponents <- c(currentcomponents,i)
+        fixedparct<-0
+        for(ct in testfeatures){
+          if(match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))>0){fixedparct<-fixedparct+featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]}}
+        fittest<-LKT(data = data, interc=interc,maxitv=maxitv,verbose=verbose,
+                     components = testcomponents,
+                     features = testfeatures,fixedpars = c(paramvec,rep(NA,featpars[match(gsub("[$]","",j),gsub("[$]","",allfeatlist))])))
+
+        BICis<- (length(fittest$coefs)+fixedparct)*log(length(fittest$prediction))-2*fittest$loglik
+        AUCis<- suppressMessages(auc(data$CF..ansbin.,fittest$prediction)[1])
+        AICis<- (length(fittest$coefs)+fixedparct)*2-2*fittest$loglik
+        RMSEis<- sqrt(mean((data$CF..ansbin.-fittest$prediction)^2))
+        testtable[nrow(testtable) + 1,] =
+          list(comp=i,feat=j,r2=fittest$r2,ind=ij,params=length(fittest$coefs)+fixedparct,
+               BIC=BICis,AUC=AUCis,AIC=AICis,RMSE=RMSEis,action=paste("add\n" ,paste(j,i,sep="-")))
+
+        switch(metric,
+               "AUC" = {compstat<- -testtable$AUC
+               currentcompstat<- -AUCis},
+               "AIC" = {compstat<- testtable$AIC
+               currentcompstat<-AICis},
+               "BIC" = {compstat<- testtable$BIC
+               currentcompstat<-BICis},
+               "RMSE" = {compstat<- testtable$RMSE
+               currentcompstat<-RMSEis},
+               "R2" = {compstat<- -testtable$r2
+               currentcompstat<- -fittest$r2})
+        cat(paste(j,i,sep="-"),length(fittest$coefs)+fixedparct,currentcompstat,"\n")
+
+        if(min(compstat)==currentcompstat)(bestmod<-fittest)
+      }
+
+
+
+      if(min(compstat)+forv<currentfitscore){cat("added","\n")
+        tracetable<-rbind(tracetable,testtable[which.min(compstat),])
+        currentfitscore<-min(compstat)
+        currentfeatures<-c(currentfeatures,testtable[which.min(compstat),]$feat)
+        currentcomponents<-c(currentcomponents,testtable[which.min(compstat),]$comp)
+        cat(testtable[which.min(compstat),]$feat,testtable[which.min(compstat),]$comp,"\n")
+      }}
+
+    if(!is.atomic(bestmod$optimizedpars)){
+      paramvec<-c(paramvec ,NA)}
+
+    # retain the best model from forward
+    # then assume that model was selected and use its parameters as a basis
+
+    #make sure backwards tests until there is no change in feature length for one iteration
+
+    if(length(currentfeatures)>1 & backward)
+    {
+      cat("\ntrying to remove\n")
+      testtable<- as.data.frame(matrix(data=NA,nrow=0,ncol=10))
+      x<-c("comp","feat","r2","ind","params","BIC","AUC","AIC","RMSE","action")
+      colnames(testtable)<-x
+
+      for(i in 1:length(currentcomponents)){
+        testfeatures <- currentfeatures[-i]
+        testcomponents <- currentcomponents[-i]
+        testpars<-c()
+
+
+        fixedparct<-0
+        pc<-1
+        featct<-1
+        for(ct in currentfeatures){
+          if(ct==currentfeatures[i] & currentcomponents[featct]==currentcomponents[i]){
+          }else{
+            if(featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]>0 ){
+              fixedparct<-fixedparct+featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]
+              testpars<-c(testpars,paramvec[pc:pc+(featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]-1)])
+            }}
+          pc<-pc+featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]
+          featct<-featct+1
+        }
+        fittest<-LKT(data = data, interc=interc,maxitv=maxitv,verbose=verbose,
+                     components = testcomponents,
+                     features = testfeatures,fixedpars = testpars)
+        BICis<- (length(fittest$coefs)+fixedparct)*log(length(fittest$prediction))-2*fittest$loglik
+        AUCis<- suppressMessages(auc(data$CF..ansbin.,fittest$prediction)[1])
+        AICis<- (length(fittest$coefs)+fixedparct)*2-2*fittest$loglik
+        RMSEis<- sqrt(mean((data$CF..ansbin.-fittest$prediction)^2))
+
+
+        testtable[nrow(testtable) + 1,] =
+          list(comp=i,feat=i,r2=fittest$r2,ind=i,params=length(fittest$coefs)+fixedparct,
+               BIC=BICis,AUC=AUCis,AIC=AICis,RMSE=RMSEis,action=paste("drop\n" ,paste(currentfeatures[i],currentcomponents[i],sep="-")))
+
+        switch(metric,
+               "AUC" = {compstat<- -testtable$AUC
+               currentcompstat<- -AUCis},
+               "AIC" = {compstat<- testtable$AIC
+               currentcompstat<-AICis},
+               "BIC" = {compstat<- testtable$BIC
+               currentcompstat<-BICis},
+               "RMSE" = {compstat<- testtable$RMSE
+               currentcompstat<-RMSEis},
+               "R2" = {compstat<- -testtable$r2
+               currentcompstat<- -fittest$r2})
+
+        cat(paste(currentfeatures[i],currentcomponents[i],sep="-"),length(fittest$coefs)+fixedparct,currentcompstat,"\n")
+        if(min(compstat)==currentcompstat)(bestmod<-fittest)
+
+      }
+      if(min(compstat)-bacv<currentfitscore){cat("removed","\n")
+        tracetable<-rbind(tracetable,testtable[which.min(compstat),])
+        currentfitscore<-min(compstat)
+        cat(currentfeatures[testtable[which.min(compstat),]$feat],currentcomponents[testtable[which.min(compstat),]$comp],"\n")
+        currentfeatures<-currentfeatures[-testtable[which.min(compstat),]$feat]
+        currentcomponents<-currentcomponents[-testtable[which.min(compstat),]$comp]
+      }}
+
+    if(length(currentcomponents)>0){
+      fixedparct<-0
+      for(ct in currentfeatures){
+        if(match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))>0){fixedparct<-fixedparct+featpars[match(gsub("[$]","",ct),gsub("[$]","",allfeatlist))]}}
+      currentfit<-LKT(data = data, interc=interc,maxitv=maxitv,verbose=verbose,
+                      components = currentcomponents,
+                      features = currentfeatures,fixedpars = rep(NA,fixedparct),cv=traceCV)
+
+      BICis<- (length(currentfit$coefs)+fixedparct)*log(length(currentfit$prediction))-2*currentfit$loglik
+      AUCis<- suppressMessages(auc(data$CF..ansbin.,currentfit$prediction)[1])
+      AICis<- (length(currentfit$coefs)+fixedparct)*2-2*currentfit$loglik
+      RMSEis<- sqrt(mean((data$CF..ansbin.-currentfit$prediction)^2))
+      if(traceCV){cat("\nStep",k,"results - pars ",length(currentfit$coefs)+fixedparct," current BIC",BICis,"current AIC",AICis,"current AUC",AUCis,
+                      "current RMSE",RMSEis," CV McFadden's R2",mean(currentfit$cv_res$mcfad),"\n")} else
+                      {cat("\nStep",k,"results - pars ",length(currentfit$coefs)+fixedparct," current BIC",BICis,"current AIC",AICis,"current AUC",AUCis,
+                           "current RMSE",RMSEis," McFadden's R2",currentfit$r2,"\n")}
+
+      cat(currentfeatures,"\n",currentcomponents,"\n")
+      if(!is.atomic(currentfit$optimizedpars)){
+        cat("pars",currentfit$optimizedpars$par,"\n")
+        paramvec<-currentfit$optimizedpars$par}
+    }}
+
+  # repeat until no more above threshold
+  # report final
+  par(mar=c(16, 5, 1, 1))
+  matplot(cbind(-scale(tracetable$r2),scale(tracetable$BIC),-scale(tracetable$AUC),
+                scale(tracetable$AIC),scale(tracetable$RMSE)), type="l", xaxt = "n",
+          ylab = "Scaled Score", lwd=2,cex=1.5)
+
+  axis(1, at = 1:nrow(tracetable), labels = paste(tracetable$action), cex.axis = 1,las=2)
+  legend("topright", c("R2","BIC","AUC","AIC","RMSE"), col=1:5, cex=1, lty=1:5, lwd=2)
+  mtext(side=1, text="Step action", line=14)
+
+  return(list(tracetable,currentfit))
+}
+
+
+
+#' @title LASSOLKTData
+#' @import crayon
+#' @description Forward and backwards stepwise search for a set of features and components
+#' @description with tracking of nonlinear parameters.
+#' @param data is a dataset with Anon.Student.Id and CF..ansbin.
+#' @param allcomponents is search space for LKT components
+#' @param allfeatures is search space for LKT features
+#' @param specialcomponents add special components (not crossed with features, only paired with special features 1 for 1)
+#' @param specialfeatures features for each special component (not crossed during search)
+#' @param specialpars parameters for the special features (if needed)
+#' @param gridpars a vector of parameters to create each feature at
+#' @param preset One of "static","AFM","PFA","advanced","AFMLLTM","PFALLTM","advancedLLTM"
+#' @param presetint should the intercepts be included for preset components
+#' @return data which is the same frame with the added spacing relevant columns.
+#' @return list of values "tracetable" and "currentfit"
+#' @export
+LASSOLKTData <- function(data,gridpars,
+                          allcomponents,allfeatures,preset=NA,presetint=T,
+                          specialcomponents=c(),specialfeatures=c(),specialpars=c()){
+
+  #allowable features in search space
+  allfeatlist<-c("numer","intercept","lineafm","logafm","logsuc","logfail","linesuc","linefail","propdec",
+                 "recency","expdecafm","recencysuc","recencyfail","logitdec","base2","ppe","base")
+
+  featpars<-c(0,0,0,0,0,0,0,0,1,1,1,1,1,1,2,4,1)
+
+  if(!is.na(preset)){if(preset=="static"){allfeatures<-c("intercept")}
+
+
+    if(preset=="AFM"){allfeatures<-c("intercept","lineafm","logafm","lineafm")}
+
+    if(preset=="AFMLLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm","lineafm$","logafm$","lineafm$")}
+
+    if(preset=="PFA"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",  "linesuc","linefail")}
+
+    if(preset=="PFALLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",  "linesuc","linefail"
+                                         ,"lineafm$","logafm$","lineafm$", "logsuc$","logfail$",  "linesuc$","linefail$")}
+
+    if(preset=="advanced"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",
+                                          "linesuc","linefail", "logitdec","propdec","recency","base")}
+
+    if(preset=="advancedLLTM"){allfeatures<-c("intercept","lineafm","logafm","lineafm", "logsuc","logfail",
+                                              "linesuc","linefail", "logitdec","propdec","recency","base","lineafm$","logafm$","lineafm$", "logsuc$","logfail$",
+                                              "linesuc$","linefail$")}
+    if(presetint==F){allfeatures<-allfeatures[allfeatures!="intercept"]}
+  }
+
+  cat(white$bgBlack$bold("\nStart making data\n"))
+
+  complist<-c()
+  featlist<-c()
+  allpars<-c()
+  for(i in allcomponents){
+    for(j in allfeatures){
+      if(featpars[match(gsub("[$]","",j),gsub("[$]","",allfeatlist))]==0){
+        complist<-c(complist,i)
+        featlist<-c(featlist,j)} else {
+          #if it has parameters, add for each value in grid
+          complist<-c(complist,rep(i,length(gridpars)))
+          featlist<-c(featlist,rep(j,length(gridpars)))
+          allpars<-c(allpars,gridpars)}
+    }}
+
+  complist<-c(specialcomponents, complist)
+  featlist<-c(specialfeatures, featlist)
+  allpars<-c(specialpars, allpars)
+  # retain the best model data
+  return(
+    LKT(data = data,   components = complist,
+        features = featlist,fixedpars = allpars, nosolve=TRUE)
+  )
+}
+
+
+#' @title LASSOLKTModel
+#' @import crayon
+#' @description runs LASSO search on the data
+#' @param data is a dataset with Anon.Student.Id and CF..ansbin.
+#' @param allcomponents is search space for LKT components
+#' @param allfeatures is search space for LKT features
+#' @param specialcomponents add special components (not crossed with features, only paired with special features 1 for 1)
+#' @param specialfeatures features for each special component (not crossed during search)
+#' @param specialpars parameters for the special features (if needed)
+#' @param gridpars a vector of parameters to create each feature at
+#' @param target_n chosen number of features in model
+#' @param preset One of "static","AFM","PFA","advanced","AFMLLTM","PFALLTM","advancedLLTM"
+#' @param presetint should the intercepts be included for preset components
+#' @return list of values "dropped 1se", "retained 1se","target features","target dropped","target pseudo R2","best pseudo R2","target mod rmse","target mod auc", and "target_mod_bic"
+#' @export
+LASSOLKTModel <- function(data,gridpars,allcomponents,preset=NA,presetint=T,allfeatures,specialcomponents=c(),
+                      specialfeatures=c(),specialpars=c(), target_n){
+
+  datmat = LASSOLKTData(setDT(data),gridpars,
+                         allcomponents,allfeatures,preset=preset,presetint=presetint,
+                         specialcomponents=c(),specialfeatures=c(),specialpars=c())
+
+  m1 = as.matrix(datmat$lassodata[[2]])
+  colnames(m1) = datmat$lassodata[[1]]
+
+  train_x <- m1
+  train_y <- data$CF..ansbin.
+
+  #23 seconds on largerawsample
+  start=Sys.time()
+  fit  = glmnet(train_x,train_y,family="binomial",intercept = FALSE)
+  end=Sys.time()
+  dur1 = end-start
+  print(dur1)
+
+  #4 minutes in largerawsample
+  start=Sys.time()
+  cvfit = cv.glmnet(train_x, train_y,family="binomial",intercept=FALSE)
+  end=Sys.time()
+  dur2 = end-start
+  print(dur2)
+
+  coef_1se = coef(cvfit, s = "lambda.1se")
+  nonzero_1se = rownames(coef_1se)[which(coef_1se!=0)]
+  zero_1se = rownames(coef_1se)[which(coef_1se==0)]
+  #Larger lambda (to the right) results in fewer features
+
+  target_lambda = cvfit$glmnet.fit$lambda[which.min(abs(cvfit$glmnet.fit$df - target_n))]
+  #Get new lasso
+  target_fit = coef(cvfit, s = target_lambda)
+  target_features = rownames(target_fit)[which(target_fit!=0)]
+  target_dropped = rownames(target_fit)[which(target_fit==0)]
+
+  target_dev_ratio = cvfit$glmnet.fit$dev.ratio[which.min(abs(cvfit$glmnet.fit$df - target_n))]
+  best_dev_ratio = max(cvfit$glmnet.fit$dev.ratio)
+
+  preds=predict(cvfit,train_x,s=target_lambda,type="response")
+  target_mod_rmse = mean(tapply(preds-train_y,data$Anon.Student.Id,function(x){sqrt(mean(x^2))}))
+  target_mod_auc = auc(as.numeric(train_y),as.numeric(preds))
+
+  fit=glmnet(x = train_x, y = train_y, family = "binomial",lambda=target_lambda)
+  tLL <-  -deviance(fit)
+  k <- fit$df
+  n <- fit$nobs
+  target_mod_bic=log(n)*k - tLL
+
+  return_list=list(zero_1se,nonzero_1se,target_features,target_dropped,target_dev_ratio,best_dev_ratio,target_mod_rmse,target_mod_auc,target_mod_bic)
+  names(return_list) = c("dropped 1se", "retained 1se","target features","target dropped","target pseudo R2","best pseudo R2","target mod rmse","target mod auc","target_mod_bic")
+
+
+  return(return_list)
 }
