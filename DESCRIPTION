@@ -1,6 +1,6 @@
 Package: LKT
 Title: Logistic Knowledge Tracing
-Version: 1.5.0
+Version: 1.6.0
 Authors@R: 
     c(person(given = "Philip I.",
            family = "Pavlik Jr.",
@@ -26,10 +26,10 @@ Imports: glmnet (>= 4.0-2), glmnetUtils (>= 1.1.8), lme4 (>= 1.1-23),
         0.2.2)
 Suggests: rmarkdown, knitr, utils, caret, ggplot2
 NeedsCompilation: no
-Packaged: 2023-05-24 21:25:13 UTC; ppavl
+Packaged: 2023-12-11 15:17:36 UTC; ppavl
 Author: Philip I. Pavlik Jr. [aut, ctb, cre]
     (<https://orcid.org/0000-0001-6467-9452>),
   Luke G. Eglington [aut, ctb] (<https://orcid.org/0000-0002-8432-9203>)
 Maintainer: Philip I. Pavlik Jr. <imrryr@gmail.com>
 Repository: CRAN
-Date/Publication: 2023-05-25 07:20:14 UTC
+Date/Publication: 2023-12-11 15:50:10 UTC

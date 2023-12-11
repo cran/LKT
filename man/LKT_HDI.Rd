@@ -10,7 +10,7 @@ LKT_HDI(
   n_students,
   components,
   features,
-  interacts,
+  interacts = NA,
   fixedpars,
   get_hdi = TRUE,
   cred_mass = 0.95

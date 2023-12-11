@@ -7,19 +7,24 @@
 LASSOLKTData(
   data,
   gridpars,
+  interc = F,
   allcomponents,
   allfeatures,
   preset = NA,
   presetint = T,
   specialcomponents = c(),
   specialfeatures = c(),
-  specialpars = c()
+  specialpars = c(),
+  removefeat = c(),
+  removecomp = c()
 )
 }
 \arguments{
 \item{data}{is a dataset with Anon.Student.Id and CF..ansbin.}
 
 \item{gridpars}{a vector of parameters to create each feature at}
+
+\item{interc}{TRUE or FALSE, include a global intercept.}
 
 \item{allcomponents}{is search space for LKT components}
 
@@ -34,6 +39,10 @@ LASSOLKTData(
 \item{specialfeatures}{features for each special component (not crossed during search)}
 
 \item{specialpars}{parameters for the special features (if needed)}
+
+\item{removefeat}{Character Vector | Excludes specified features from the test list.}
+
+\item{removecomp}{Character Vector | Excludes specified components from the test list.}
 }
 \value{
 data which is the same frame with the added spacing relevant columns.
