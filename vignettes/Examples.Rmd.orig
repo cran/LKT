@@ -9,6 +9,8 @@ vignette: >
   \usepackage[utf8]{inputenc}
 ---
 
+
+# Packages
 ```{r setup, include = TRUE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -28,7 +30,7 @@ knitr::opts_chunk$set(
 
 
 # Load data (shows modifications to create needed columns)
-```{r, echo=TRUE}
+```{r load_sample, echo=TRUE}
 set.seed(41)
     val<-largerawsample
 
@@ -76,7 +78,7 @@ set.seed(41)
 
 
 # Load MATHia (example how to load a remote dataset)
-```{r, echo=TRUE}
+```{r load_MATHia, echo=TRUE}
 set.seed(41)
 datafile<-"C:/Users/ppavl/Dropbox/Active projects/ds4845_tx_All_Data_6977_2021_0723_141809.txt" # CHANGE THIS VALUE TO THE DataShop export file IN YOUR R WORKING DIRECTORY
 val2<-read.delim(colClasses = c("Anon.Student.Id"="character"),datafile,sep="\t", header=TRUE,quote="")
@@ -116,59 +118,14 @@ for(i in 1:5){val2$fold[which(val2$Anon.Student.Id %in% unq[which(sfold==i)])]=i
 
 
 # Load Assistments 2012 skillbuilder (example how to load a remote dataset)
-```{r, echo=TRUE}
-# set.seed(41)
-# # From Assistments https://sites.google.com/site/assistmentsdata/datasets/2012-13-school-data-with-affect dataset https://drive.google.com/file/d/1cU6Ft4R3hLqA7G1rIGArVfelSZvc6RxY/view
-# datafile<-"C:/Users/ppavl/Dropbox/Active projects/2012-2013-data-with-predictions-4-final.csv" # CHANGE THIS VALUE TO THE DataShop export file IN YOUR R WORKING DIRECTORY
-# val3<-fread(colClasses = c("user_id"="character"),datafile, header=TRUE)
-# val3$Anon.Student.Id<-val3$user_id
-#
-# val3<-val3[val3$skill!="",]
-#
-# #Duplicate screening
-# val3 <-  val3 %>%  distinct(user_id,start_time,.keep_all=T)
-#
-# val3$CF..Time.<-as.numeric(as.POSIXct(as.character(val3$start_time),format="%Y-%m-%d %H:%M:%S"))
-# val3<-val3[order(val3$Anon.Student.Id, val3$CF..Time.),]
-# val3$CF..ansbin.<-val3$correct
-# val3<-val3[val3$CF..ansbin.==0 | val3$CF..ansbin.==1,]
-# val3$Duration..sec.<-as.numeric(as.POSIXct(as.character(val3$end_time),format="%Y-%m-%d %H:%M:%S"))-as.numeric(as.POSIXct(as.character(val3$start_time),format="%Y-%m-%d %H:%M:%S")) #allows recency, spacing, forgetting features to run
-# val3$Outcome<-ifelse(val3$correct==1,"CORRECT","INCORRECT")
-#
-# val3 <- val3 %>%
-#   group_by(problem_id) %>%
-#   filter(n() > 4) %>%
-#   ungroup()
-#
-# val3 <- val3 %>%
-#   group_by(user_id) %>%
-#   filter(n() >= 20) %>%
-#   ungroup()
-#
-# # make student stratified folds (for crossvalidation for unseen population)
-# unq = sample(unique(val3$Anon.Student.Id))
-# sfold = rep(1:5,length.out=length(unq))
-# val3$fold = rep(0,length(val3[,1]))
-# for(i in 1:5){val3$fold[which(val3$Anon.Student.Id %in% unq[which(sfold==i)])]=i}
-#
-#
-# val3 <- computeSpacingPredictors(val3, "skill") #allows recency, spacing, forgetting features to run
-# val3 <- computeSpacingPredictors(val3, "Anon.Student.Id") #allows recency, spacing,
-#
-# val3 <- computeSpacingPredictors(val3, "problem_type") #allows recency, spacing, forgetting features to run
-# val3 <- computeSpacingPredictors(val3, "type") #allows recency, spacing,forgetting features to run
-# val3<-setDT(val3)
-
-
-#save(val3,file="..\\Assistments2012fullrev.RData")
-
-set.seed(41)
+```{r load_assist, echo=TRUE}
+set.seed(42)
 # From Assistments https://sites.google.com/site/assistmentsdata/datasets/2012-13-school-data-with-affect dataset https://drive.google.com/file/d/1cU6Ft4R3hLqA7G1rIGArVfelSZvc6RxY/view
 datafile<-"C:/Users/ppavl/Dropbox/Active projects/2012-2013-data-with-predictions-4-final.csv" # CHANGE THIS VALUE TO THE DataShop export file IN YOUR R WORKING DIRECTORY
 val3<-fread(colClasses = c("user_id"="character"),datafile, header=TRUE)
 val3$Anon.Student.Id<-val3$user_id
 
-# Identify 10% of the unique users
+# Identify 5% of the unique users
 selected_users <- sample(unique(val3$user_id), size = floor(.05 * length(unique(val3$user_id))))
 # Filter out the selected users
 val3 <- val3[val3$user_id %in% selected_users,]
@@ -214,7 +171,7 @@ val3<-setDT(val3)
 
 
 # Additive Factors Model (AFM) fixed effect version
-```{r, echo=TRUE}
+```{r AFM, echo=TRUE}
     modelob <- LKT(
       data = val, interc=FALSE,
       components = c("Anon.Student.Id","KC..Default.","KC..Default."),
@@ -223,18 +180,18 @@ val3<-setDT(val3)
 
 
 # Performance Factors Analysis (PFA) fixed effect version
-```{r, echo=TRUE}
+```{r PFA, echo=TRUE}
 
 
-  modelob <- LKT(data = val, interc=FALSE,
-      components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
+  modelob <- LKT(data = val3, interc=FALSE,
+      components = c("Anon.Student.Id", "skill", "skill", "skill"),
       features = c("intercept", "intercept", "linesuc$","linefail$"))
 
 
 ```
 
 # PFA using difficulty sensitive predictors (composite model requiring pred from prior model for estimation)
-```{r, echo=TRUE}
+```{r PFA-difficulty, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
@@ -250,16 +207,16 @@ val3<-setDT(val3)
 ```
 
 # Recent Performance Factors Analysis (RPFA)
-```{r, echo=TRUE}
+```{r RPFA, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
       features = c("intercept", "intercept", "propdec2","linefail"),
-      fixedpars=c(.9))
+      seedpars=c(.9))
 ```
 
 # Recency tracing with logitdec
-```{r, echo=TRUE}
+```{r logitdec_recency, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
@@ -268,17 +225,17 @@ val3<-setDT(val3)
 ```
 
 # Recency tracing with logitdec and transfer from cluster
-```{r, echo=TRUE}
+```{r transfer_example, echo=TRUE}
 
 system.time( modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default.","KC..Cluster."),
       features = c("intercept", "intercept", "logitdec","recency","logitdec"),
-      seedpars=c(.9,.5,.5)))
+      fixedpars=c(.9,.5,.5)))
 ```
 
 # Performance Prediction Equation (PPE)
-```{r, echo=TRUE}
+```{r PPE, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
@@ -286,8 +243,8 @@ system.time( modelob <- LKT(
       fixedpars=c(0.3491901,0.2045801,1e-05,0.9734477,0.4443027))
 ```
 
-# base4
-```{r, echo=TRUE}
+# base4 example
+```{r base4_feature, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default."),
@@ -301,7 +258,7 @@ the main R code for package
 
 
 # Simple interactions
-```{r, echo=TRUE}
+```{r simple_interactions, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id","KC..Default.","KC..Default."),
@@ -310,7 +267,7 @@ the main R code for package
 ```
 
 # Individualized Additive Factors Model (iAFM) fixed effect version
-```{r, echo=TRUE}
+```{r iAFM, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id","KC..Default.","KC..Default.","KC..Default."),
@@ -321,7 +278,7 @@ the main R code for package
 
 
 # Connectors (another way to do interactions)
-```{r, echo=TRUE}
+```{r linear_connectors, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       connectors = c("+","*"),
@@ -331,7 +288,7 @@ the main R code for package
 ```
 
 # AutoKC
-```{r}
+```{r KC_search_method, echo=TRUE}
 
 mnames<-c("IRT",
           "Faculty",
@@ -475,16 +432,16 @@ for(i in 1:4){
 
 
 # Credibility intervals
-```{r}
+```{r confidence_intervals, echo=TRUE}
 
-components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default.")
-features = c("intercept", "intercept", "linesuc$","linefail$")
+components = c( "KC..Default.", "KC..Default.", "KC..Default.")
+features = c( "intercept", "linesuc$","linefail$")
+fixedpars = NA
 
 # or
 
-components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default.")
-features = c("logit", "logit", "linesuc","linefail")
-fixedpars = c(.03,.03)
+#components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default.")
+#features = c("logit", "logit", "linesuc","linefail")
 
 mod1 = LKT(setDT(val),interc=TRUE,
            components=components,
@@ -492,10 +449,10 @@ mod1 = LKT(setDT(val),interc=TRUE,
            fixedpars = fixedpars,
            seedpars = c(NA))
 
-n_students=400
+n_students = 400
 n_boot = 100
 system.time({
-  boot_res = LKT_HDI(val,n_boot,n_students,components=components,features=features,fixedpars=fixedpars)
+  boot_res = LKT_HDI(val, n_boot, n_students, comps = components, feats = features, fixeds = fixedpars)
 })
 
 
@@ -503,18 +460,12 @@ system.time({
 zero_idx = which(boot_res$coef_hdi$includes_zero==TRUE)
 boot_res$coef_hdi$coef_name[zero_idx]
 
-if(!is.na(unique(boot_res$par_reps[,zero_idx[1]]))){
-  hist(boot_res$par_reps[,zero_idx[1]],breaks=50,main=boot_res$coef_hdi$coef_name[zero_idx][1])
-
-abline(v=boot_res$coef_hdi$lower[zero_idx[1]],col="darkblue",lwd=3)
-abline(v=boot_res$coef_hdi$upper[zero_idx[1]],col="darkblue",lwd=3)
-abline(v=mean(boot_res$par_reps[,zero_idx[1]]),lty=2,col="darkblue",lwd=3)
-#Estimate from full fit to data
-  abline(v=boot_res$mod_full$coefs[which(rownames(boot_res$mod_full$coefs)==colnames(boot_res$par_reps)[zero_idx[1]])],col="firebrick3",lwd=3)} else {print(boot_res$coef_hdi)}
+#10 lines of full report
+print(boot_res$coef_hdi[1:20,])
 ```
 
 # Recency tracing with RPFA propdec2 feature (the one in the original Galyardt and Goldin paper)
-```{r, echo=TRUE}
+```{r feature_examples, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,
       components = c("Anon.Student.Id", "KC..Default.", "KC..Default.", "KC..Default.", "KC..Default."),
@@ -523,7 +474,7 @@ abline(v=mean(boot_res$par_reps[,zero_idx[1]]),lty=2,col="darkblue",lwd=3)
 ```
 
 # brpropdec (experimental feature)
-```{r, echo=TRUE}
+```{r experimental, echo=TRUE}
     modelob <- LKT(
       data = val, interc=TRUE,dualfit = TRUE,
       components = c("KC..Default.","Anon.Student.Id","KC..Default.","KC..Default."),
@@ -532,7 +483,7 @@ print(modelob$coefs)
 ```
 
 # Simple adaptive model for practice optimization
-```{r, echo=TRUE}
+```{r simple_adaptive, echo=TRUE}
 
 
 modelob <- LKT(data = val, interc=FALSE,dualfit = FALSE,factrv = 1e11,
@@ -542,7 +493,7 @@ modelob <- LKT(data = val, interc=FALSE,dualfit = FALSE,factrv = 1e11,
 ```
 
 # Test of new feature to trace KC intercepts across time (not within subjects)
-```{r, echo=TRUE}
+```{r aggregate_parameter_tracing, echo=TRUE}
     val<-val[order(val$CF..Time.),]
 modelob <- LKT(data = val, interc=TRUE,dualfit = FALSE,factrv = 1e11,
                components = c("Anon.Student.Id","KC..Default.","KC..Default.","KC..Default.")
@@ -551,7 +502,7 @@ modelob <- LKT(data = val, interc=TRUE,dualfit = FALSE,factrv = 1e11,
 ```
 
 # Astonishing model (theory analysis)
-```{r, echo=TRUE}
+```{r Astonishing, echo=TRUE}
 modelob <- LKT(
       data = val, interc=TRUE,dualfit = TRUE,factrv=1e7,
       components = c("Anon.Student.Id","KC..Default.","KC..Default.","KC..Default."),
@@ -567,19 +518,19 @@ modelob <- LKT(
 ```
 
 # Build LKT with special feature
-```{r, echo=TRUE}
+```{r buildLKT_with_offset, echo=TRUE}
 
 q<-  buildLKTModel(data = val, interc=TRUE, specialcomponents = "CF..End.Latency.",specialfeatures = "numer",
       allcomponents = c("Anon.Student.Id", "KC..Default."),
       currentcomponents = c(),forv=100,bacv=80,
-      allfeatures = c("lineafm","logafm","logsuc","logfail","linesuc","linefail","propdec","recencysuc","recencyfail"),
+      allfeatures = c("lineafm","logafm","logsuc","logfail","linesuc","linefail"),
       currentfeatures = c( ),currentfixedpars = c(),forward=TRUE,backward=TRUE,
       maxitv=1,verbose=FALSE)
 ```
 
 
-# AFMstartMATHia
-```{r, echo=TRUE}
+# AFMstartMATHia with CV
+```{r AFMstartMATHiaCV, echo=TRUE}
 LLs <- numeric(0)
 AUCs <- numeric(0)
 RMSEs <- numeric(0)
@@ -602,7 +553,7 @@ for (i in 1:2) {
   modelob <-modelob[[2]]
 
   pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
+    as.matrix(modelob$predictors %*% modelob$coefs)[,]
   ), .00001), .99999)[modelob$newdata$fold %in% i])
   LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
   AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
@@ -625,55 +576,8 @@ save(savedata,file="AFMMATHia.RData")
 
 ```
 
-# BestLRstartMATHia
-```{r, echo=TRUE}
-LLs <- numeric(0)
-AUCs <- numeric(0)
-RMSEs <- numeric(0)
-R2s <- numeric(0)
-for (i in 1:2) {
-  print((1:2)[-i])
-
-  modelob<-  buildLKTModel(
-    usefolds = (1:2)[-i],data = val2, interc=TRUE,verbose=F,
-    removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id"),
-    removefeat = c("intercept","logsuc$", "logfail$"),
-      allcomponents = c("Anon.Student.Id",  "KC..MATHia.","Problem.Name"),
-      forv=1200,bacv=1200,allfeatures = c("intercept","lineafm","logafm","logsuc","logfail",
-                      "linesuc","linefail","logitdec","propdec","recency","logsuc$", "logfail$"),
-      maxitv=8,
-      currentfeatures = c("intercept", "intercept", "logsuc", "logfail","intercept",
-                          "logsuc$", "logfail$"),
-    currentcomponents = c("Anon.Student.Id","Problem.Name","Anon.Student.Id","Anon.Student.Id","KC..MATHia.","KC..MATHia.","KC..MATHia."))
-
-  modelobtable <-modelob[[1]]
-  modelob <-modelob[[2]]
-
-  pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
-  ), .00001), .99999)[modelob$newdata$fold %in% i])
-  LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
-  AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
-  print(AUCs[i])
-  nullmodel <-glm(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] ~ 1,data =
-                    as.data.frame(rep(1, length(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]))),
-      family = binomial(logit))
-  R2s[i] <- round(1 - LLs[i] / logLik(nullmodel)[1], 6)
-
-    RMSEs[i]<- sqrt(mean((modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]
-                          -pred)^2))
-  print(R2s[i])
-}
-print(AUCs)
-print(R2s)
-print(RMSEs)
-savedata<-list(modelobtable,AUCs,R2s,RMSEs)
-save(savedata,file="bestLRMATHia.RData")
-
-```
-
-# EmptystartMATHia
-```{r, echo=TRUE}
+# EmptystartMATHia with CV
+```{r EmptystartMATHiaCV, echo=TRUE}
 LLs <- numeric(0)
 AUCs <- numeric(0)
 RMSEs <- numeric(0)
@@ -694,7 +598,7 @@ for (i in 1:2) {
   modelob <-modelob[[2]]
 
   pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
+    as.matrix(modelob$predictors %*% modelob$coefs)[,]
   ), .00001), .99999)[modelob$newdata$fold %in% i])
   LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
   AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
@@ -718,296 +622,8 @@ save(savedata,file="emptyMATHia.RData")
 ```
 
 
-
-# AFMstartCloze
-```{r, echo=TRUE}
-LLs <- numeric(0)
-AUCs <- numeric(0)
-RMSEs <- numeric(0)
-R2s <- numeric(0)
-for (i in 1:2) {
-  print((1:2)[-i])
-
-  modelob<-  buildLKTModel(
-    usefolds = (1:2)[-i],data = val, interc=TRUE,
-    removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id"),
-    removefeat = c("intercept","logsuc$", "logfail$"),
-    currentcomponents = c("Anon.Student.Id","KC..Cluster.","KC..Cluster.","CF..Correct.Answer.","CF..Correct.Answer."),
-    currentfeatures = c("intercept", "intercept",         "lineafm$", "intercept",         "lineafm$"),
-      allcomponents = c("Anon.Student.Id", "KC..Default.","KC..Cluster.","CF..Correct.Answer."),
-      forv=1200,bacv=1200,allfeatures = c("intercept","lineafm","logafm","logsuc","logfail",
-                      "linesuc","linefail","logitdec","propdec","recency","logsuc$", "logfail$"),
-      maxitv=8)
-
-
-  modelobtable <-modelob[[1]]
-  modelob <-modelob[[2]]
-
-  pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
-  ), .00001), .99999)[modelob$newdata$fold %in% i])
-  LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
-  AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
-  print(AUCs[i])
-  nullmodel <-glm(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] ~ 1,data =
-                    as.data.frame(rep(1, length(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]))),
-      family = binomial(logit))
-  R2s[i] <- round(1 - LLs[i] / logLik(nullmodel)[1], 6)
-
-    RMSEs[i]<- sqrt(mean((modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]
-                          -pred)^2))
-  print(R2s[i])
-}
-print(AUCs)
-print(R2s)
-print(RMSEs)
-
-
-savedata<-list(modelobtable,AUCs,R2s,RMSEs)
-save(savedata,file="AFMcloze.RData")
-
-```
-
-
-# BestLRstartCloze
-```{r, echo=TRUE}
-LLs <- numeric(0)
-AUCs <- numeric(0)
-RMSEs <- numeric(0)
-R2s <- numeric(0)
-for (i in 1:2) {
-  print((1:2)[-i])
-
-  modelob<-  buildLKTModel(
-    usefolds = (1:2)[-i],data = val, interc=TRUE,
-    removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id"),
-    removefeat = c("intercept","logsuc$", "logfail$"),
-    currentcomponents = c("Anon.Student.Id","KC..Default.","Anon.Student.Id","Anon.Student.Id","KC..Cluster.","KC..Cluster.","KC..Cluster.","CF..Correct.Answer.","CF..Correct.Answer.","CF..Correct.Answer."),
-    currentfeatures = c("intercept", "intercept", "logsuc", "logfail","intercept", "logsuc$",
-                          "logfail$","intercept", "logsuc$", "logfail$"),
-      allcomponents = c("Anon.Student.Id", "KC..Default.","KC..Cluster.","CF..Correct.Answer."),
-      forv=1200,bacv=1200,allfeatures = c("intercept","lineafm","logafm","logsuc","logfail",
-                      "linesuc","linefail","logitdec","propdec","recency","logsuc$", "logfail$"),
-      maxitv=8)
-
-
-  modelobtable <-modelob[[1]]
-  modelob <-modelob[[2]]
-
-  pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
-  ), .00001), .99999)[modelob$newdata$fold %in% i])
-  LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
-  AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
-  print(AUCs[i])
-  nullmodel <-glm(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] ~ 1,data =
-                    as.data.frame(rep(1, length(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]))),
-      family = binomial(logit))
-  R2s[i] <- round(1 - LLs[i] / logLik(nullmodel)[1], 6)
-
-    RMSEs[i]<- sqrt(mean((modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]
-                          -pred)^2))
-  print(R2s[i])
-}
-print(AUCs)
-print(R2s)
-print(RMSEs)
-
-
-savedata<-list(modelobtable,AUCs,R2s,RMSEs)
-save(savedata,file="bestLRcloze.RData")
-
-
-```
-
-# EmptystartCloze
-```{r, echo=TRUE}
-LLs <- numeric(0)
-AUCs <- numeric(0)
-RMSEs <- numeric(0)
-R2s <- numeric(0)
-for (i in 1:2) {
-  print((1:2)[-i])
-
-  modelob<-  buildLKTModel(
-    usefolds = (1:2)[-i],data = val, interc=TRUE,
-    removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id"),
-    removefeat = c("intercept","logsuc$", "logfail$"),
-      allcomponents = c("Anon.Student.Id", "KC..Default.","KC..Cluster.","CF..Correct.Answer."),
-      forv=1200,bacv=1200,allfeatures = c("intercept","lineafm","logafm","logsuc","logfail",
-                      "linesuc","linefail","logitdec","propdec","recency","logsuc$", "logfail$"),
-      maxitv=8)
-
-
-  modelobtable <-modelob[[1]]
-  modelob <-modelob[[2]]
-
-  pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
-  ), .00001), .99999)[modelob$newdata$fold %in% i])
-  LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
-  AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
-  print(AUCs[i])
-  nullmodel <-glm(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] ~ 1,data =
-                    as.data.frame(rep(1, length(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]))),
-      family = binomial(logit))
-  R2s[i] <- round(1 - LLs[i] / logLik(nullmodel)[1], 6)
-
-    RMSEs[i]<- sqrt(mean((modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]
-                          -pred)^2))
-  print(R2s[i])
-}
-print(AUCs)
-print(R2s)
-print(RMSEs)
-
-
-savedata<-list(modelobtable,AUCs,R2s,RMSEs)
-save(savedata,file="emptycloze.RData")
-
-
-```
-# EmptystartAssist
-```{r, echo=TRUE}
-LLs <- numeric(0)
-AUCs <- numeric(0)
-RMSEs <- numeric(0)
-R2s <- numeric(0)
-for (i in 1:2) {
-  print((1:2)[-i])
-
-
-  modelob<-  buildLKTModel(
-    usefolds = (1:2)[-i],data = val3, interc=TRUE,
-    removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id"),
-    removefeat = c("intercept","logsuc$", "logfail$"),
-      allcomponents = c("Anon.Student.Id","skill","problem_type","type"),
-      forv=1200,bacv=1200,
-    allfeatures = c("intercept","lineafm","logafm","logsuc","logfail","linesuc","linefail","logitdec","propdec","recency","logsuc$", "logfail$"),
-      maxitv=8)
-
-
-
-  modelobtable <-modelob[[1]]
-  modelob <-modelob[[2]]
-
-  pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
-  ), .00001), .99999)[modelob$newdata$fold %in% i])
-  LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
-  AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
-  print(AUCs[i])
-  nullmodel <-glm(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] ~ 1,data =
-                    as.data.frame(rep(1, length(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]))),
-      family = binomial(logit))
-  R2s[i] <- round(1 - LLs[i] / logLik(nullmodel)[1], 6)
-
-    RMSEs[i]<- sqrt(mean((modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i]
-                          -pred)^2))
-  print(R2s[i])
-}
-print(AUCs)
-print(R2s)
-print(RMSEs)
-
-
-savedata<-list(modelobtable,AUCs,R2s,RMSEs)
-save(savedata,file="emptyAssistrev.RData")
-
-
-load(file="emptyAssistrev.RData")
-tracetable<-savedata[[1]]
-rownames(tracetable) <- NULL
-tracetable[,c(3,5,6,7,9)]<-round(tracetable[,c(3,5,6,7,9)],3)
-print(tracetable[,c(3,5,6,7,9,10)],row.names=FALSE)
-
-print(paste(sep="",
-            "CV AUC mean(SD)= ",round(mean(savedata[[2]]),5),"(",round(sd(savedata[[2]]),5),"),",
-            "CV R-squared CV mean(SD) = ",round(mean(savedata[[3]]),5),"(",round(sd(savedata[[3]]),4),"),",
-            "CV RMSE mean(SD) = ",round(mean(savedata[[4]]),5),"(",round(sd(savedata[[4]]),4),")"))
-png(file="C:\\Users\\ppavl\\Dropbox\\Active projects\\emptyAssistrev.png",width=6.3,height=6.3,res=600, units="in")
-par(mar=c(18, 5, 1, 1))
-  matplot(cbind(-scale(tracetable$r2),scale(tracetable$BIC),-scale(tracetable$AUC),
-                scale(tracetable$AIC),scale(tracetable$RMSE)), type="l", xaxt = "n",
-          ylab = "Scaled Scores", lwd=2,cex=1.5)
-
-  axis(1, at = 1:nrow(tracetable), labels = paste(tracetable$action), cex.axis = 1.2,las=2)
-  legend("topright", c("R squared","BIC","AUC","AIC","RMSE"), col=1:5, cex=.8, lty=1:5, lwd=2)
-  mtext(side=1, text="Step Actions", line=16)
-  dev.off()
-
-
-```
-
-# Figures for EDM 2024 paper
-```{r}
-
-filenames<-c("AFMcloze.RData", "bestLRcloze.RData", "AFMMATHia.RData", "bestLRMATHia.RData", "emptyMATHia.RData", "emptycloze.RData", "emptyAssistrev.RData"
-)
-for (i in filenames){
-load(file=i)
-tracetable<-savedata[[1]]
-rownames(tracetable) <- NULL
-tracetable[,c(3,5,6,7,9)]<-round(tracetable[,c(3,5,6,7,9)],3)
-print(tracetable[,c(3,5,6,7,9,10)],row.names=FALSE)
-
-
-print(paste(sep="",
-            "CV AUC mean(SD)= ",round(mean(savedata[[2]]),5),"(",round(sd(savedata[[2]]),5),"),",
-            "CV R-squared CV mean(SD) = ",round(mean(savedata[[3]]),5),"(",round(sd(savedata[[3]]),4),"),",
-            "CV RMSE mean(SD) = ",round(mean(savedata[[4]]),5),"(",round(sd(savedata[[4]]),4),")"))
-
-
-# Manually scale and negate the columns to match the original plot
-scaled_data <- tracetable
-scaled_data$r2 <- as.numeric(-scale(scaled_data$r2))
-scaled_data$BIC <- as.numeric(scale(scaled_data$BIC))
-scaled_data$AUC <- as.numeric(-scale(scaled_data$AUC))
-scaled_data$AIC <- as.numeric(scale(scaled_data$AIC))
-scaled_data$RMSE <- as.numeric(scale(scaled_data$RMSE))
-
-# Add numeric prefix to 'action' for ordering
-scaled_data$action <- factor(scaled_data$action, levels = unique(scaled_data$action))
-scaled_data$action <- paste0(seq_along(unique(scaled_data$action)), ". ", as.character(scaled_data$action))
-# Remove line breaks from the 'action' column
-scaled_data$action <- gsub("\\n", " ", scaled_data$action)
-numeric_prefixes <- as.numeric(gsub("([0-9]+)\\. .*", "\\1", scaled_data$action))
-
-# Order the 'action' column based on the numeric prefixes
-scaled_data$action <- factor(scaled_data$action, levels = unique(scaled_data$action)[order(numeric_prefixes)])
-
-
-# Select only the columns of interest ('action' and the metrics) before gathering
-selected_columns <- scaled_data[, c("action", "r2", "BIC", "AUC", "AIC", "RMSE")]
-long_data <- tidyr::gather(selected_columns, Metric, Scaled_Value, -action)
-# Rename the 'r2' metric to 'R^2' in the data
-long_data$Metric[long_data$Metric == "r2"] <- "R^2"
-
-# Create the Parallel Coordinates Plot with scaled values
-gg <- ggplot(long_data, aes(x = Metric, y = Scaled_Value, group = action, color = action)) +
-  geom_line() +
-  scale_x_discrete(
-    limits = c("BIC", "R^2", "AUC", "AIC", "RMSE"),
-    labels = c("R^2" = expression(R^2), "BIC" = "BIC", "AUC" = "AUC", "AIC" = "AIC", "RMSE" = "RMSE")
-  ) +
-  labs(
-    title = NULL,  # Remove title
-    x = "Metrics",
-    y = "Scaled Z-Scores"
-  ) +
-  theme_minimal() +
-  theme(
-    legend.title = element_blank()  # Remove legend title
-  )
-
-# Display the plot
-gg}
-```
-
-
-
 # example of LASSOLKT
-```{r, echo=TRUE}
+```{r LASSOLKT, echo=TRUE}
 LASSO_Model<- LASSOLKTModel(
   data = setDT(val),gridpars=(1:9)/10,
   removecomp = c("Anon.Student.Id","Anon.Student.Id","Anon.Student.Id",
@@ -1038,7 +654,7 @@ kept_features
 ```
 
 # example of LASSOLKT with preset
-```{r, echo=TRUE}
+```{r preset_LASSOLKT, echo=TRUE}
     modelob <- LASSOLKTModel(
       data = val, gridpars=(1:9)/10,interc = F,
       allcomponents = c("Anon.Student.Id","KC..Default."),
@@ -1049,7 +665,7 @@ str(modelob)
 ```
 
 # example for the nosolve parameter to make it return the model matrix
-```{r, echo=TRUE}
+```{r data_export_no_model_solving, echo=TRUE}
     modelob <- LKT(
       data = val, interc=FALSE,
       components = c("Anon.Student.Id","KC..Default.","KC..Default."),
@@ -1057,9 +673,8 @@ str(modelob)
 ```
 
 
-
-# Assistments 12 data CV example (True crossvalidation of entire search process)
-```{r, echo=TRUE}
+# Assistments data CV example (True crossvalidation of entire search process)
+```{r CV_intercept_cluster_model, echo=TRUE}
 LLs <- numeric(0)
 AUCs <- numeric(0)
 R2s <- numeric(0)
@@ -1132,7 +747,7 @@ val3<-setDT(val3)
   )
 
   pred <- as.vector(pmin(pmax(inv.logit(
-    as.matrix(modelob$predictors[[2]] %*% modelob$coefs)[,]
+    as.matrix(modelob$predictors %*% modelob$coefs)[,]
   ), .00001), .99999)[modelob$newdata$fold %in% i])
   LLs[i] <-(sum(log(ifelse(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i] == 1, pred, 1 - pred))))
   AUCs[i] <-suppressMessages(auc(modelob$newdata$CF..ansbin.[modelob$newdata$fold %in% i], pred)[1])
@@ -1146,8 +761,5 @@ val3<-setDT(val3)
   print(R2s[i])
   print(RMSEs[i])
 }
-print(AUCs)
-print(R2s)
-
 
 ```
